@@ -10,7 +10,9 @@
 - **Region은 행정동 단독 테이블로 간다.** PRD가 말하는 "영등포/노원/송파"는 구(區) 단위지만 실제 서비스 단위는 행정동(예: 당산제1동)이라, 별도 `Gu` 테이블을 만드는 대신 `Region.gu_name` 컬럼 하나로 구 정보를 얹는다. 구가 3개뿐이라 정규화할 이유가 없다.
 - **Transaction.region_id는 nullable.** CSV `지역` 값이 실제로 비어있는 행이 존재한다(원본 33건 중 다수가 빈 문자열). `LocalNotice.region_id`와 동일하게 "매칭 실패 시 NULL 허용" 패턴을 그대로 따른다.
 - **Product 테이블을 mock과 통합했다.** PRD 데이터모델의 `Product`(분석 요청용: title/category/desired_price)와 `carrot/mock_contract.py`의 `ProductListItem`(실제 매물: trade_status/trade_type/favorite_count)은 "동네 중고 상품 1건"이라는 같은 개념이라 테이블을 나누지 않고 `trade_status`, `trade_type` 컬럼을 추가하는 쪽으로 합쳤다. 분석 전용 임시 상품이면 `trade_status`는 기본값(SALE)만 쓰고 무시하면 된다.
-- **ChatRoom / ChatRoomParticipant는 참고용으로만 추가.** PRD MVP 범위(`docs/PRD.md` 6절)에도, `docs/issue/*.md` 어디에도 채팅 기능은 없다. `carrot/mock_contract.py`에 `ChatRoom` mock이 있어 향후 확장을 감안해 스키마만 제안해두는 것이고, 지금 이슈 목록엔 구현 TASK가 없다 — 실제 착수 전까지는 만들지 않아도 된다.
+- **ChatRoom / ChatRoomParticipant는 실제로 착수했다 (갱신: 처음엔 참고용으로만 추가해뒀는데, "물건 등록/조회/채팅" 기본 마켓 기능 자체가 어떤 이슈 문서에도 없다는 게 뒤늦게 확인돼 `10-marketplace-core.md`로 새로 이슈를 만들고 구현함).** 여기 더해 실제 메시지 송수신을 위한 `ChatMessage`, 찜 기능을 위한 `ProductFavorite`도 이번에 추가했다 — 둘 다 원래 스키마엔 없던 테이블이라 사용자 승인 받고 진행했다 (2026-08-31). 동네생활(커뮤니티, `CommunityPost` 등)은 여전히 PRD/이슈 범위 밖으로 제외한다 — 이건 "당근 고도화니까 있어야 할 것 같다"는 개인 판단이었을 뿐 실제 요구사항이 아니라는 게 확인됐다.
+- **`ChatMessage`를 `ChatRoom`과 별도 테이블로 뒀다.** `ChatRoom.last_message`/`last_message_at`는 목록 화면 미리보기용 캐시일 뿐, 방에 들어갔을 때 보이는 메시지 전체 내역은 별도 저장이 필요하다. 메시지 전송 시 `ChatRoom`의 캐시 컬럼을 같이 갱신하고, 상대방 `ChatRoomParticipant.unread_count`를 증가시킨다. 실시간 push(WebSocket 등)는 범위 밖 — REST 폴링 전제로 시작.
+- **`ProductFavorite`는 `(user_id, product_id)` UNIQUE로 중복 찜을 막는다.** `Product.favorite_count`처럼 캐시 컬럼을 두지 않고 `COUNT(ProductFavorite) WHERE product_id = ...`로 그때그때 집계한다 (MVP 트래픽 규모에서 매번 집계해도 부담 없음 — `CommunityPost.emotion_count`와 반대로 여긴 아직 캐시할 근거가 없다).
 - **AD-03(기부 검수) 관련 `Donation.review_status`는 뺐다.** `09-backlog-2nd-3rd.md`에 2순위로 명시된 기능이라 1순위 스키마에는 넣지 않는다. 착수 시점에 `ALTER TABLE donation ADD COLUMN review_status ...`로 추가.
 - **동네생활(커뮤니티)은 당근 기본 기능이라 별도로 추가했다.** PRD/이슈 문서 어디에도 없지만, 이 플랫폼이 당근의 "고도화"인 이상 당근 홈(`daangn.com`) 자체가 제공하는 동네생활 게시판(글/댓글/공감)은 밑바탕 기능으로 필요하다는 게 확인됐다. `CommunityPost` / `Comment` / `PostReaction` 3테이블로 최소 구성 — 당근 홈 동네생활 피드가 실제로 쓰는 필드(제목/카테고리/썸네일/작성시각/공감수/댓글수)만 반영했고, 대댓글은 `Comment.parent_comment_id` 자기참조로 처리해서 별도 테이블을 만들지 않았다. 중고차/부동산/모임/알바 등 나머지 당근 버티컬은 PRD 범위 밖이라 넣지 않았다.
 - **카카오/네이버 OAuth는 `SocialAccount` 테이블로 분리했다, `RefreshToken`을 재사용하지 않는다.** 이름은 같은 "access_token/refresh_token"이지만 성격이 다른 두 가지다 — `RefreshToken`(기존)은 *우리 서비스*가 로그인한 클라이언트에게 발급하는 JWT 재발급용 토큰이고, `SocialAccount.access_token`/`refresh_token`은 *카카오·네이버가* 우리 서버에 발급한, 그 사람 프로필을 다시 조회하거나 연동을 해제할 때 쓰는 토큰이다. 하나의 테이블에 억지로 합치면 의미가 섞여서 분리했다. 이메일 회원가입 없이 소셜 로그인만으로 가입하는 사용자를 지원해야 하므로 `User.password_hash`를 nullable로 바꿨다(단, 이메일 회원가입 유저는 필수 — 앱 레벨에서 `password_hash IS NOT NULL OR SocialAccount 존재` 정도로 검증).
@@ -53,6 +55,8 @@ erDiagram
 
     Product ||--o{ Analysis : "분석 대상"
     Product ||--o{ ChatRoom : "거래 채팅"
+    Product ||--o{ ProductFavorite : "찜"
+    User ||--o{ ProductFavorite : "찜한 사람"
 
     Analysis ||--|| AnalysisResult : "산출"
 
@@ -66,6 +70,8 @@ erDiagram
     PointTransaction ||--o{ Donation : "적립 계기(nullable)"
 
     ChatRoom ||--o{ ChatRoomParticipant : "참여자"
+    ChatRoom ||--o{ ChatMessage : "메시지"
+    User ||--o{ ChatMessage : "발신"
 
     CommunityPost ||--o{ Comment : "댓글"
     CommunityPost ||--o{ PostReaction : "공감"
@@ -122,6 +128,13 @@ erDiagram
         int created_by FK "nullable, User"
         string trade_status "SALE|RESERVED|SOLD"
         string trade_type "SALE|FREE"
+        datetime created_at
+    }
+
+    ProductFavorite {
+        int id PK
+        int user_id FK
+        int product_id FK
         datetime created_at
     }
 
@@ -271,6 +284,14 @@ erDiagram
         datetime joined_at
     }
 
+    ChatMessage {
+        int id PK
+        int chat_room_id FK
+        int sender_id FK "User"
+        text content
+        datetime created_at
+    }
+
     CommunityPost {
         int id PK
         int user_id FK
@@ -321,22 +342,22 @@ erDiagram
 
 ### 중고거래
 
-| Product | Transaction | Analysis | AnalysisResult |
-| --- | --- | --- | --- |
-| id PK | id PK | id PK | id PK |
-| title | product_title | product_id FK | analysis_id FK UK |
-| category | search_keyword (nullable) | region_id FK | price_min (nullable) |
-| search_keyword (nullable) | category | requested_by FK (User) | price_max (nullable) |
-| desired_price (nullable) | detail_category (nullable) | status ("pending\|done") | frequency_grade |
-| region_id FK | price (nullable) | created_at | sample_count |
-| created_by FK (nullable) | region_id FK (nullable) | | evidence_json |
-| trade_status | status | | computed_at |
-| trade_type | trade_place (nullable) | | |
-| created_at | description (nullable) | | |
-| | seller_nickname (nullable) | | |
-| | seller_manner_temp (nullable) | | |
-| | chat_count / interest_count / view_count | | |
-| | listed_at / traded_at (nullable) / collected_at | | |
+| Product | ProductFavorite | Transaction | Analysis | AnalysisResult |
+| --- | --- | --- | --- | --- |
+| id PK | id PK | id PK | id PK | id PK |
+| title | user_id FK | product_title | product_id FK | analysis_id FK UK |
+| category | product_id FK | search_keyword (nullable) | region_id FK | price_min (nullable) |
+| search_keyword (nullable) | created_at | category | requested_by FK (User) | price_max (nullable) |
+| desired_price (nullable) | (user_id, product_id) UK | detail_category (nullable) | status ("pending\|done") | frequency_grade |
+| region_id FK | | price (nullable) | created_at | sample_count |
+| created_by FK (nullable) | | region_id FK (nullable) | | evidence_json |
+| trade_status | | status | | computed_at |
+| trade_type | | trade_place (nullable) | | |
+| created_at | | description (nullable) | | |
+| | | seller_nickname (nullable) | | |
+| | | seller_manner_temp (nullable) | | |
+| | | chat_count / interest_count / view_count | | |
+| | | listed_at / traded_at (nullable) / collected_at | | |
 
 ### 갖가지 / 어드민
 
@@ -392,18 +413,18 @@ erDiagram
 | comment_count (캐시) | | |
 | created_at | | |
 
-### 참고용 (미착수)
+### 채팅 (기본 마켓)
 
-| ChatRoom | ChatRoomParticipant |
-| --- | --- |
-| id PK | id PK |
-| type ("TRADE\|COMMUNITY\|GROUP\|SYSTEM") | chat_room_id FK |
-| title | user_id FK |
-| product_id FK (nullable) | unread_count |
-| last_message (nullable) | joined_at |
-| last_message_at (nullable) | |
-| verified | |
-| created_at | |
+| ChatRoom | ChatRoomParticipant | ChatMessage |
+| --- | --- | --- |
+| id PK | id PK | id PK |
+| type ("TRADE\|COMMUNITY\|GROUP\|SYSTEM") | chat_room_id FK | chat_room_id FK |
+| title | user_id FK | sender_id FK (User) |
+| product_id FK (nullable) | unread_count | content |
+| last_message (nullable) | joined_at | created_at |
+| last_message_at (nullable) | | |
+| verified | | |
+| created_at | | |
 
 ---
 
@@ -412,12 +433,13 @@ erDiagram
 | 테이블 | 소속 EPIC | 관련 이슈 |
 | --- | --- | --- |
 | `Region`, `User`, `RefreshToken`, `SocialAccount` | 공통/회원관리 | [01-common-infra.md](issue/01-common-infra.md), [02-auth.md](issue/02-auth.md) |
-| `Product`, `Transaction`, `Analysis`, `AnalysisResult` | 중고거래 | [03-trades.md](issue/03-trades.md) |
+| `Product` | 중고거래(가격분석), 중고거래(기본 마켓) | [03-trades.md](issue/03-trades.md), [10-marketplace-core.md](issue/10-marketplace-core.md) |
+| `Transaction`, `Analysis`, `AnalysisResult` | 중고거래(가격분석) | [03-trades.md](issue/03-trades.md) |
+| `ProductFavorite`, `ChatRoom`, `ChatRoomParticipant`, `ChatMessage` | 중고거래(기본 마켓) | [10-marketplace-core.md](issue/10-marketplace-core.md) |
 | `LocalNotice`, `Alert`, `CollectionError` | 갖가지 / 어드민 | [05-local.md](issue/05-local.md), [04-admin.md](issue/04-admin.md) |
 | `PointAccount`, `PointTransaction`, `Facility`, `FundraisingGoal`, `DonationSetting`, `Donation` | 꿈가지 | [06-dream.md](issue/06-dream.md) |
 | `MerchantSpend` | 지역상생 | [07-local-share.md](issue/07-local-share.md) |
-| `ChatRoom`, `ChatRoomParticipant` | (참고용, 미착수) | `carrot/mock_contract.py` |
-| `CommunityPost`, `Comment`, `PostReaction` | 동네생활 (당근 기본 기능) | PRD/이슈에 없음 — 당근 홈 동네생활 피드 참고 |
+| `CommunityPost`, `Comment`, `PostReaction` | (범위 제외) | PRD/이슈에 없음 — MVP 범위에서 제외하기로 확정 (2026-08-31) |
 
 - 구매자AI([08-buyer-ai.md](issue/08-buyer-ai.md))는 전용 테이블이 없다 — `AnalysisResult`(가격 Range/빈도)를 그대로 재사용하는 규칙 기반 판정이라 스키마가 필요 없다는 게 이슈 문서 방침.
 - `PostReaction`은 `(post_id, user_id)` 유니크 제약으로 중복 공감을 막는다 (한 게시글에 한 유저가 공감 1번).
