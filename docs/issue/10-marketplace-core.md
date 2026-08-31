@@ -62,7 +62,33 @@
 - [x] 로그인 사용자가 `ChatRoomParticipant`로 속한 채팅방만 반환, 최근 메시지순 정렬
 - 완료조건(DoD): 참여 중인 방만 반환, 참여 없으면 빈 배열
 
+### TASK-08-07: 상품 정보 수정 — `PATCH /api/v1/trades/products/{product_id}` 🔒
+
+- [ ] `schema.ProductUpdateRequest`(title, category, desired_price, search_keyword — 전부 optional, 부분 수정)
+- [ ] 본인(`created_by`)이 아닌 사용자가 수정 시도 → 403
+- [ ] 존재하지 않는 `product_id` → 404
+- 완료조건(DoD): 정상 수정 200, 타인 소유 403, 없는 id 404
+
+### TASK-08-08: 상품 검색 — `GET /api/v1/trades/products`에 키워드 파라미터 추가
+
+- [ ] `q`(검색어) 쿼리 파라미터 추가, `title` 또는 `search_keyword`에 부분일치(`ILIKE`)
+- 완료조건(DoD): 검색어 포함 상품만 반환, 검색어 없으면 기존과 동일하게 전체 반환
+
+### TASK-08-09: 찜(관심상품) — `POST/DELETE /api/v1/trades/products/{product_id}/favorite` 🔒, `GET /api/v1/trades/products/favorites` 🔒
+
+- [ ] **DB 스키마 변경 필요** — `docs/ERD.md`에 없던 테이블. 착수 전 사용자 승인 필요 (제안: `product_favorites`(id, user_id, product_id, created_at), `(user_id, product_id)` UNIQUE)
+- [ ] `ProductListItem.favorite_count`를 이 테이블 기준 실제 카운트로 교체 (지금은 0 고정)
+- 완료조건(DoD): 찜 추가/취소 정상 동작, 중복 찜 방지, 내 찜 목록 조회
+
+### TASK-08-10: 채팅 메시지 송수신 — `POST /api/v1/chats/{chat_room_id}/messages` 🔒, `GET /api/v1/chats/{chat_room_id}/messages` 🔒
+
+- [ ] **DB 스키마 변경 필요** — `docs/ERD.md`에 없던 테이블. 착수 전 사용자 승인 필요 (제안: `chat_messages`(id, chat_room_id, sender_id, content, created_at))
+- [ ] 메시지 전송 시 `ChatRoom.last_message`/`last_message_at` 갱신, 상대방 `ChatRoomParticipant.unread_count` 증가
+- [ ] 메시지 조회 시 본인 `ChatRoomParticipant.unread_count`는 0으로 초기화
+- [ ] 실시간 push(WebSocket 등)는 이 TASK 범위 밖 — REST로 보내고 받는 것까지만 (폴링 전제)
+- 완료조건(DoD): 메시지 전송 후 목록에 반영, 참여자 아닌 사용자가 조회 시도 시 403
+
 ## 비고
 
-- **실시간 메시지 송수신(WebSocket 등)은 이 이슈 범위 밖.** `last_message`/`last_message_at` 갱신과 실제 메시지 내역 저장/조회는 별도 이슈로 분리 — 지금은 채팅방 껍데기(생성/목록)까지만.
-- `favorite_count`(관심수) 저장이 필요해지면 별도 테이블/컬럼 추가를 이 TASK가 아니라 후속 TASK로 분리한다 (지금은 없는 값이라 0 또는 nullable로 시작).
+- **범위를 "중고거래 자체" 기능으로만 한정한다.** 동네생활(커뮤니티 게시판, `CommunityPost`/`Comment`/`PostReaction`)은 PRD·이슈 문서 어디에도 명시된 요구사항이 아니라서 이 이슈에서 다루지 않는다 (MVP 3주 일정상 핵심 3축에 집중, 필요해지면 별도 백로그).
+- 실시간 알림/푸시는 TASK-08-10에서도 범위 밖 — REST 폴링 전제로 시작.

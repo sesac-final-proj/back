@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.trades import schema
@@ -47,6 +47,7 @@ def list_products(
     region_id: int | None,
     category: str | None,
     trade_status: str | None,
+    q: str | None,
     page: int,
     size: int,
 ) -> schema.ProductListResponse:
@@ -67,6 +68,9 @@ def list_products(
         query = query.filter(Product.category == category)
     if trade_status is not None:
         query = query.filter(Product.trade_status == trade_status)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Product.title.ilike(like), Product.search_keyword.ilike(like)))
 
     total = query.count()
     rows = (
@@ -103,6 +107,21 @@ def update_product_status(db: Session, user: User, product_id: int, trade_status
     if product.created_by != user.id:
         raise PermissionDeniedError("본인 상품만 상태를 변경할 수 있습니다.")
     product.trade_status = trade_status
+    db.commit()
+    db.refresh(product)
+    return product
+
+
+def update_product(db: Session, user: User, product_id: int, data: schema.ProductUpdateRequest) -> Product:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+    if product.created_by != user.id:
+        raise PermissionDeniedError("본인 상품만 수정할 수 있습니다.")
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(product, field, value)
+
     db.commit()
     db.refresh(product)
     return product

@@ -24,11 +24,12 @@ def list_products(
     region_id: int | None = None,
     category: str | None = None,
     trade_status: schema.TradeStatus | None = None,
+    q: str | None = None,
     page: int = 1,
     size: int = 20,
     db: Session = Depends(get_db),
 ):
-    return service.list_products(db, region_id, category, trade_status, page, size)
+    return service.list_products(db, region_id, category, trade_status, q, page, size)
 
 
 @router.get("/products/{product_id}", response_model=schema.ProductDetailResponse)
@@ -44,4 +45,15 @@ def update_product_status(
     db: Session = Depends(get_db),
 ):
     service.update_product_status(db, user, product_id, body.trade_status)
+    return service.get_product_detail(db, product_id)
+
+
+@router.patch("/products/{product_id}", response_model=schema.ProductDetailResponse)
+def update_product(
+    product_id: int,
+    body: schema.ProductUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.update_product(db, user, product_id, body)
     return service.get_product_detail(db, product_id)

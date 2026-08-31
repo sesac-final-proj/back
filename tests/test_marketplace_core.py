@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from app.api.v1.chats import service as chat_service
 from app.api.v1.chats.schema import ChatRoomCreateRequest
 from app.api.v1.trades import service as trade_service
-from app.api.v1.trades.schema import ProductCreateRequest, ProductStatusUpdateRequest
+from app.api.v1.trades.schema import ProductCreateRequest, ProductStatusUpdateRequest, ProductUpdateRequest
 from app.core.db import SessionLocal
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.core.security import hash_password
@@ -66,7 +66,7 @@ def main():
         product_id = product.id
         assert product.trade_status == "SALE"
 
-        page = trade_service.list_products(db, region.id, None, None, page=1, size=20)
+        page = trade_service.list_products(db, region.id, None, None, None, page=1, size=20)
         assert page.total == 1
         assert page.items[0].neighborhood_name == "자가검증동"
         assert page.items[0].favorite_count == 0
@@ -88,6 +88,25 @@ def main():
 
         trade_service.update_product_status(db, owner, product.id, "RESERVED")
         assert trade_service.get_product_detail(db, product.id).trade_status == "RESERVED"
+
+        try:
+            trade_service.update_product(db, other, product.id, ProductUpdateRequest(title="가로채기"))
+            raise AssertionError("타인 소유 상품 수정은 403이어야 한다")
+        except PermissionDeniedError:
+            pass
+
+        trade_service.update_product(
+            db, owner, product.id, ProductUpdateRequest(title="원목 사이드 테이블(가격내림)", desired_price=20000)
+        )
+        updated = trade_service.get_product_detail(db, product.id)
+        assert updated.title == "원목 사이드 테이블(가격내림)"
+        assert updated.price == 20000
+        assert updated.category == "가구"  # 안 건드린 필드는 유지
+
+        found = trade_service.list_products(db, None, None, None, "사이드", page=1, size=20)
+        assert found.total == 1
+        not_found = trade_service.list_products(db, None, None, None, "냉장고", page=1, size=20)
+        assert not_found.total == 0
 
         # 채팅방: TRADE인데 product_id 없으면 DTO validator가 이미 막음
         try:

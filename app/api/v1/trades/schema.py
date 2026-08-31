@@ -53,6 +53,13 @@ class ProductStatusUpdateRequest(BaseModel):
     trade_status: TradeStatus
 
 
+class ProductUpdateRequest(BaseModel):
+    title: str | None = None
+    category: str | None = None
+    desired_price: int | None = None
+    search_keyword: str | None = None
+
+
 class AnalysisRequest(BaseModel):
     product_title: str
     category: str
