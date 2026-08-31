@@ -76,16 +76,16 @@
 
 ### TASK-08-09: 찜(관심상품) — `POST/DELETE /api/v1/trades/products/{product_id}/favorite` 🔒, `GET /api/v1/trades/products/favorites` 🔒
 
-- [ ] **DB 스키마 변경 필요** — `docs/ERD.md`에 없던 테이블. 착수 전 사용자 승인 필요 (제안: `product_favorites`(id, user_id, product_id, created_at), `(user_id, product_id)` UNIQUE)
-- [ ] `ProductListItem.favorite_count`를 이 테이블 기준 실제 카운트로 교체 (지금은 0 고정)
+- [x] **DB 스키마 변경 필요** — `docs/ERD.md`에 없던 테이블. 착수 전 사용자 승인 필요 (제안: `product_favorites`(id, user_id, product_id, created_at), `(user_id, product_id)` UNIQUE)
+- [x] `ProductListItem.favorite_count`를 이 테이블 기준 실제 카운트로 교체 (지금은 0 고정)
 - 완료조건(DoD): 찜 추가/취소 정상 동작, 중복 찜 방지, 내 찜 목록 조회
 
 ### TASK-08-10: 채팅 메시지 송수신 — `POST /api/v1/chats/{chat_room_id}/messages` 🔒, `GET /api/v1/chats/{chat_room_id}/messages` 🔒
 
-- [ ] **DB 스키마 변경 필요** — `docs/ERD.md`에 없던 테이블. 착수 전 사용자 승인 필요 (제안: `chat_messages`(id, chat_room_id, sender_id, content, created_at))
-- [ ] 메시지 전송 시 `ChatRoom.last_message`/`last_message_at` 갱신, 상대방 `ChatRoomParticipant.unread_count` 증가
-- [ ] 메시지 조회 시 본인 `ChatRoomParticipant.unread_count`는 0으로 초기화
-- [ ] 실시간 push(WebSocket 등)는 이 TASK 범위 밖 — REST로 보내고 받는 것까지만 (폴링 전제)
+- [x] **DB 스키마 변경 필요** — `docs/ERD.md`에 없던 테이블. 착수 전 사용자 승인 필요 (제안: `chat_messages`(id, chat_room_id, sender_id, content, created_at))
+- [x] 메시지 전송 시 `ChatRoom.last_message`/`last_message_at` 갱신, 상대방 `ChatRoomParticipant.unread_count` 증가
+- [x] 메시지 조회 시 본인 `ChatRoomParticipant.unread_count`는 0으로 초기화
+- [x] 실시간 push(WebSocket 등)는 이 TASK 범위 밖 — REST로 보내고 받는 것까지만 (폴링 전제)
 - 완료조건(DoD): 메시지 전송 후 목록에 반영, 참여자 아닌 사용자가 조회 시도 시 403
 
 ## 비고
