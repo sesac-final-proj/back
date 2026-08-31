@@ -8,9 +8,9 @@ from app.core.db import SessionLocal
 from app.models.region import Region
 
 SAMPLE_REGIONS = [
-    {"dong_code": "TMP-YDP-001", "dong_name": "영등포구 여의동", "lat": 37.5219, "lng": 126.9245},
-    {"dong_code": "TMP-NW-001", "dong_name": "노원구 상계동", "lat": 37.6597, "lng": 127.0700},
-    {"dong_code": "TMP-SPA-001", "dong_name": "송파구 잠실동", "lat": 37.5133, "lng": 127.1000},
+    {"dong_code": "TMP-YDP-001", "dong_name": "여의동", "gu_name": "영등포구", "lat": 37.5219, "lng": 126.9245},
+    {"dong_code": "TMP-NW-001", "dong_name": "상계동", "gu_name": "노원구", "lat": 37.6597, "lng": 127.0700},
+    {"dong_code": "TMP-SPA-001", "dong_name": "잠실동", "gu_name": "송파구", "lat": 37.5133, "lng": 127.1000},
 ]
 
 

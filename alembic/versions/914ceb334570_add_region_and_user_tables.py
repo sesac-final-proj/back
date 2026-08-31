@@ -24,15 +24,17 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('dong_code', sa.String(length=20), nullable=False),
     sa.Column('dong_name', sa.String(length=100), nullable=False),
+    sa.Column('gu_name', sa.String(length=50), nullable=False),
     sa.Column('lat', sa.Float(), nullable=False),
     sa.Column('lng', sa.Float(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_regions_dong_code'), 'regions', ['dong_code'], unique=True)
     op.create_table('users',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('password_hash', sa.String(length=255), nullable=False),
+    sa.Column('password_hash', sa.String(length=255), nullable=True),
     sa.Column('nickname', sa.String(length=50), nullable=False),
     sa.Column('role', sa.Enum('USER', 'ADMIN', name='user_role'), nullable=False),
     sa.Column('region_id', sa.Integer(), nullable=True),
