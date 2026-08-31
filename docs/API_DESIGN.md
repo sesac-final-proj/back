@@ -13,6 +13,18 @@
 - 인증 필요 여부는 각 표의 🔒 열로 표시 (🔒 없으면 공개 API)
 - 우선순위는 기능명세서를 그대로 따름 (1순위부터 구현)
 
+## 1-1. DTO 공통 규칙
+
+각 EPIC 폴더의 `schema.py`에 Pydantic DTO를 정의할 때 공통으로 따르는 규칙. 필드 목록 자체(뭘 요청/응답으로 주고받는지)는 각 `docs/issue/*.md`에 TASK별로 이미 나와있으니 그대로 옮기고, 여기 규칙은 "어떻게 짤지"만 다룬다.
+
+- **네이밍**: 요청은 `XxxRequest`, 응답은 `XxxResponse` (생성 API는 `XxxCreated`도 허용 — 예: `AnalysisCreated`).
+- **민감/내부 컬럼 금지**: `User.password_hash` 같은 DB 내부 컬럼은 어떤 응답 DTO에도 넣지 않는다. `docs/ERD.md`에서 컬럼을 확인하되, "그 컬럼이 있다"와 "API로 내보낸다"는 별개로 판단한다.
+- **ORM 변환**: DB 모델을 그대로 응답으로 내보낼 때는 `model_config = {"from_attributes": True}`를 선언해 `Model.from_orm()` 없이 바로 반환할 수 있게 한다.
+- **목록 응답은 페이지네이션 공통 포맷**: 매 EPIC마다 새로 만들지 않고 `app.core.pagination.Page[T]`(`items`, `total`)를 재사용한다.
+- **"정상이지만 결과 없음/불가" 상태는 별도 필드로 명시**: 표본 부족, 분모 0 등은 500 에러가 아니라 응답 DTO 안에 `status`(예: `"insufficient_data"`) 필드나 `Optional` 값으로 명확히 구분한다. 억지로 값을 채우지 않는다.
+- **enum은 앱 내부 Enum 재사용**: `role` 같은 필드는 `app/models`에 이미 있는 Enum(`UserRole` 등)을 그대로 타입으로 쓰고, EPIC마다 문자열 리터럴을 새로 정의하지 않는다.
+- **날짜/시간은 UTC 그대로**: 타임존 변환은 프론트 책임, 서버는 `datetime`을 UTC 그대로 직렬화한다.
+
 ```
 back/
 └── app/
