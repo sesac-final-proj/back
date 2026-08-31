@@ -64,14 +64,14 @@
 
 ### TASK-08-07: 상품 정보 수정 — `PATCH /api/v1/trades/products/{product_id}` 🔒
 
-- [ ] `schema.ProductUpdateRequest`(title, category, desired_price, search_keyword — 전부 optional, 부분 수정)
-- [ ] 본인(`created_by`)이 아닌 사용자가 수정 시도 → 403
-- [ ] 존재하지 않는 `product_id` → 404
+- [x] `schema.ProductUpdateRequest`(title, category, desired_price, search_keyword — 전부 optional, 부분 수정)
+- [x] 본인(`created_by`)이 아닌 사용자가 수정 시도 → 403
+- [x] 존재하지 않는 `product_id` → 404
 - 완료조건(DoD): 정상 수정 200, 타인 소유 403, 없는 id 404
 
 ### TASK-08-08: 상품 검색 — `GET /api/v1/trades/products`에 키워드 파라미터 추가
 
-- [ ] `q`(검색어) 쿼리 파라미터 추가, `title` 또는 `search_keyword`에 부분일치(`ILIKE`)
+- [x] `q`(검색어) 쿼리 파라미터 추가, `title` 또는 `search_keyword`에 부분일치(`ILIKE`)
 - 완료조건(DoD): 검색어 포함 상품만 반환, 검색어 없으면 기존과 동일하게 전체 반환
 
 ### TASK-08-09: 찜(관심상품) — `POST/DELETE /api/v1/trades/products/{product_id}/favorite` 🔒, `GET /api/v1/trades/products/favorites` 🔒
