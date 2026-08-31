@@ -15,7 +15,7 @@
 - **동네생활(커뮤니티)은 당근 기본 기능이라 별도로 추가했다.** PRD/이슈 문서 어디에도 없지만, 이 플랫폼이 당근의 "고도화"인 이상 당근 홈(`daangn.com`) 자체가 제공하는 동네생활 게시판(글/댓글/공감)은 밑바탕 기능으로 필요하다는 게 확인됐다. `CommunityPost` / `Comment` / `PostReaction` 3테이블로 최소 구성 — 당근 홈 동네생활 피드가 실제로 쓰는 필드(제목/카테고리/썸네일/작성시각/공감수/댓글수)만 반영했고, 대댓글은 `Comment.parent_comment_id` 자기참조로 처리해서 별도 테이블을 만들지 않았다. 중고차/부동산/모임/알바 등 나머지 당근 버티컬은 PRD 범위 밖이라 넣지 않았다.
 - **카카오/네이버 OAuth는 `SocialAccount` 테이블로 분리했다, `RefreshToken`을 재사용하지 않는다.** 이름은 같은 "access_token/refresh_token"이지만 성격이 다른 두 가지다 — `RefreshToken`(기존)은 *우리 서비스*가 로그인한 클라이언트에게 발급하는 JWT 재발급용 토큰이고, `SocialAccount.access_token`/`refresh_token`은 *카카오·네이버가* 우리 서버에 발급한, 그 사람 프로필을 다시 조회하거나 연동을 해제할 때 쓰는 토큰이다. 하나의 테이블에 억지로 합치면 의미가 섞여서 분리했다. 이메일 회원가입 없이 소셜 로그인만으로 가입하는 사용자를 지원해야 하므로 `User.password_hash`를 nullable로 바꿨다(단, 이메일 회원가입 유저는 필수 — 앱 레벨에서 `password_hash IS NOT NULL OR SocialAccount 존재` 정도로 검증).
 - **`Facility` = 아동복지센터 또는 발달장애센터다 — `facility_type` 컬럼을 둔다.** (수정: 처음엔 기부처가 아동복지시설 하나뿐인 줄 알고 구분 컬럼을 뺐는데, "구별로 두 가지(아동복지센터/발달장애센터) 선정"이 확정되면서 실제로 값이 2종류가 됐다. 값이 하나뿐일 때 미리 넣는 건 과설계지만, 지금은 진짜 2종류가 있으니 enum 컬럼을 넣는 게 맞다.) `facility_type: "child_welfare" | "developmental_disability"` 로 구분한다. 구(Gu) 단위로 "각 타입당 1곳"을 고른다는 규칙은 큐레이션 정책이라 DB 제약(UNIQUE)으로 강제하지 않고 어드민 운영으로 관리 — 나중에 실제로 구별 2곳 제한이 깨지면 안 되는 요구사항이 되면 그때 `(gu_name, facility_type)` 부분 유니크를 검토한다.
-- **포인트/기부금/집행금액은 전부 "1점 = 1원"으로 취급한다(명시적 전제).** `PointTransaction.amount`(적립 포인트) → `Donation.amount`(기부 포인트) → `MerchantSpend.amount`(아동복지시설이 실제로 상권에 쓴 금액, 원화)가 이 순서로 이어지는데, 단위가 안 맞으면 `07-local-share.md`의 지역 환류율 공식(`집행금액 ÷ 전체 지원금 × 100`)이 깨진다. 세 컬럼 모두 int(원 단위, 1포인트=1원)로 통일해서 별도 환율/전환 테이블 없이 바로 나눗셈이 되게 했다 — 포인트 가치가 원화와 분리되는 정책이 실제로 생기면 그때 전환 로직을 추가한다.
+- **포인트/기부금/집행금액이 같은 단위(원)로 이어지는 건 "1점=1원"이라는 별도 전제가 아니라 적립 공식 자체의 결과다.** `PointTransaction.amount`는 `06-dream.md` 적립 기준대로 `결제/거래금액 × 적립률`로 계산한다 — 일반결제 1%, 중고거래 0.1%(5,000원 이상 거래에만 적용). 이 적립률이 이미 원화 금액에 곱해지는 방식이라, 계산된 포인트 값 자체가 원화 단위로 나온다(예: 100,000원 결제 → 1,000포인트). 그 값이 `Donation.amount`(기부 포인트) → `MerchantSpend.amount`(실제 집행 금액, 원화)까지 그대로 이어져서 `07-local-share.md`의 지역 환류율 공식(`집행금액 ÷ 전체 지원금 × 100`)이 별도 전환 없이 성립한다. 세 컬럼 모두 int(원 단위)로 둔 이유가 여기 있다 — 포인트 가치를 원화와 분리하는 정책(예: 포인트별 별도 환율)이 실제로 생기면 그때 전환 컬럼/로직을 추가한다.
 - **꿈가지 대시보드의 "모금 진행률"과 지역상생 SH-03의 "지역 환류율"은 공식이 다른 별개 지표다 — 이름이 겹치지 않게 문서상 분리했다.** 꿈가지 쪽(이번에 새로 정의된 `현재 모금액 ÷ 반기별 목표금액 × 100`)은 `FundraisingGoal` 테이블을 새로 추가해서 계산하고, SH-03(`집행금액 ÷ 전체 지원금 × 100`, `MerchantSpend` 기반)은 그대로 둔다. 사용자 확인: 둘 다 유지하기로 결정.
 - **`FundraisingGoal`(반기별 목표 모금액)을 `Facility`에 딸린 테이블로 추가했다.** "기부 현황(목표 모금액 %화)" 대시보드가 시설별·반기별 목표 대비 진행률을 보여줘야 해서 필요하다. "현재 모금액"은 별도 컬럼으로 캐싱하지 않고 `SUM(Donation.amount) WHERE facility_id = ... AND created_at BETWEEN period_start AND period_end`로 그때그때 계산한다 — MVP 트래픽 규모에서 매번 집계해도 부담 없고, `CommunityPost.emotion_count`처럼 캐시 컬럼을 미리 둘 근거가 아직 없다 (조회가 느려지면 그때 캐시 컬럼 추가). "기부 참여 횟수"도 같은 이유로 `COUNT(Donation)` 집계로 처리하고 별도 카운터 컬럼을 두지 않는다.
 - **`Facility.lat`/`lng`를 추가했다.** "지도에서 기부금액 현황을 확인"하려면 지도 핀 좌표가 필요하다. `LocalNotice`와 동일한 패턴으로 시설 자체 좌표는 nullable로 두고, 없으면 `Region.lat/lng`(소재 행정동 대표 좌표)를 fallback으로 쓴다.
@@ -202,8 +202,8 @@ erDiagram
     PointTransaction {
         int id PK
         int user_id FK
-        int amount "원 단위(1포인트=1원)"
-        string source "general_payment(가지페이 결제) | trade(중고거래)"
+        int amount "원 단위, 결제/거래금액 × 적립률로 계산"
+        string source "general_payment(가지페이 결제, 1%) | trade(중고거래, 0.1%·5,000원↑)"
         int related_id "nullable"
         datetime created_at
     }
@@ -238,7 +238,7 @@ erDiagram
         int user_id FK
         int facility_id FK "선택한 Facility"
         int point_transaction_id FK "nullable"
-        int amount "원 단위(1포인트=1원), 기부한 포인트 금액"
+        int amount "원 단위, 기부한 포인트 금액"
         datetime created_at
     }
 
@@ -247,7 +247,7 @@ erDiagram
         int facility_id FK "nullable, 집행한 Facility"
         int region_id FK
         string merchant_name
-        int amount "원 단위(1포인트=1원)"
+        int amount "원 단위"
         date spent_at
         text description "nullable"
     }
