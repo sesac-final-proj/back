@@ -8,13 +8,14 @@ CRUD만 수행).
 from fastapi import HTTPException
 
 from app.api.v1.chats import service as chat_service
-from app.api.v1.chats.schema import ChatRoomCreateRequest
+from app.api.v1.chats.schema import ChatRoomCreateRequest, MessageCreateRequest
 from app.api.v1.trades import service as trade_service
 from app.api.v1.trades.schema import ProductCreateRequest, ProductStatusUpdateRequest, ProductUpdateRequest
 from app.core.db import SessionLocal
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.core.security import hash_password
-from app.models.chat import ChatRoom, ChatRoomParticipant
+from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
+from app.models.favorite import ProductFavorite
 from app.models.product import Product
 from app.models.region import Region
 from app.models.user import User, UserRole
@@ -135,12 +136,64 @@ def main():
         rooms_page_owner = chat_service.list_my_chat_rooms(db, owner, page=1, size=20)
         assert rooms_page_owner.total == 0  # 개설자(other)만 참여자로 등록됨
 
+        # 찜
+        fav = trade_service.add_favorite(db, other, product.id)
+        assert fav.favorited is True and fav.favorite_count == 1
+        fav_again = trade_service.add_favorite(db, other, product.id)  # 중복 찜 -> 그대로 1
+        assert fav_again.favorite_count == 1
+        assert trade_service.get_product_detail(db, product.id).favorite_count == 1
+
+        my_favs = trade_service.list_my_favorites(db, other, page=1, size=20)
+        assert my_favs.total == 1 and my_favs.items[0].id == product.id
+
+        unfav = trade_service.remove_favorite(db, other, product.id)
+        assert unfav.favorited is False and unfav.favorite_count == 0
+        assert trade_service.list_my_favorites(db, other, page=1, size=20).total == 0
+
+        try:
+            trade_service.add_favorite(db, other, -1)
+            raise AssertionError("없는 상품 찜은 404여야 한다")
+        except NotFoundError:
+            pass
+
+        # 채팅 메시지
+        try:
+            chat_service.send_message(db, owner, room.id, MessageCreateRequest(content="야"))
+            raise AssertionError("참여자 아닌데 메시지 보내면 403이어야 한다")
+        except PermissionDeniedError:
+            pass
+
+        msg = chat_service.send_message(
+            db, other, room.id, MessageCreateRequest(content="아직 판매 중인가요?")
+        )
+        assert msg.content == "아직 판매 중인가요?"
+
+        try:
+            chat_service.list_messages(db, owner, room.id, page=1, size=20)
+            raise AssertionError("참여자 아닌데 메시지 조회하면 403이어야 한다")
+        except PermissionDeniedError:
+            pass
+
+        try:
+            chat_service.list_messages(db, other, -1, page=1, size=20)
+            raise AssertionError("없는 채팅방 조회는 404여야 한다")
+        except NotFoundError:
+            pass
+
+        msgs = chat_service.list_messages(db, other, room.id, page=1, size=20)
+        assert msgs.total == 1 and msgs.items[0].content == "아직 판매 중인가요?"
+
+        room_after = db.get(ChatRoom, room.id)
+        assert room_after.last_message == "아직 판매 중인가요?"
+
         print("marketplace-core self-check OK")
     finally:
         if room_id is not None:
+            db.query(ChatMessage).filter_by(chat_room_id=room_id).delete()
             db.query(ChatRoomParticipant).filter_by(chat_room_id=room_id).delete()
             db.query(ChatRoom).filter_by(id=room_id).delete()
         if product_id is not None:
+            db.query(ProductFavorite).filter_by(product_id=product_id).delete()
             db.query(Product).filter_by(id=product_id).delete()
         db.delete(owner)
         db.delete(other)

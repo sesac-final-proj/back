@@ -34,3 +34,20 @@ class ChatRoomResponse(BaseModel):
 
 
 ChatRoomListResponse = Page[ChatRoomResponse]
+
+
+class MessageCreateRequest(BaseModel):
+    content: str
+
+
+class MessageResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    chat_room_id: int
+    sender_id: int
+    content: str
+    created_at: datetime
+
+
+MessageListResponse = Page[MessageResponse]

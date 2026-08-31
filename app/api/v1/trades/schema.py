@@ -60,6 +60,14 @@ class ProductUpdateRequest(BaseModel):
     search_keyword: str | None = None
 
 
+class FavoriteToggleResponse(BaseModel):
+    favorited: bool
+    favorite_count: int
+
+
+ProductFavoritesResponse = Page[ProductListItem]
+
+
 class AnalysisRequest(BaseModel):
     product_title: str
     category: str

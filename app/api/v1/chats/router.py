@@ -26,3 +26,28 @@ def list_chat_rooms(
     db: Session = Depends(get_db),
 ):
     return service.list_my_chat_rooms(db, user, page, size)
+
+
+@router.post(
+    "/{chat_room_id}/messages",
+    response_model=schema.MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def send_message(
+    chat_room_id: int,
+    body: schema.MessageCreateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.send_message(db, user, chat_room_id, body)
+
+
+@router.get("/{chat_room_id}/messages", response_model=schema.MessageListResponse)
+def list_messages(
+    chat_room_id: int,
+    page: int = 1,
+    size: int = 20,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_messages(db, user, chat_room_id, page, size)

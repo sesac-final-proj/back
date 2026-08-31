@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.trades import schema
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.chat import ChatRoom
+from app.models.favorite import ProductFavorite
 from app.models.product import Product
 from app.models.region import Region
 from app.models.user import User
@@ -28,7 +29,9 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
     return product
 
 
-def _to_list_item(product: Product, dong_name: str, chat_count: int) -> schema.ProductListItem:
+def _to_list_item(
+    product: Product, dong_name: str, chat_count: int, favorite_count: int
+) -> schema.ProductListItem:
     return schema.ProductListItem(
         id=product.id,
         title=product.title,
@@ -38,7 +41,15 @@ def _to_list_item(product: Product, dong_name: str, chat_count: int) -> schema.P
         trade_status=product.trade_status,
         trade_type=product.trade_type,
         chat_count=chat_count,
-        favorite_count=0,  # 관심수 저장 테이블 없음 — 필요해지면 별도 TASK
+        favorite_count=favorite_count,
+    )
+
+
+def _favorite_count_subq():
+    return (
+        select(ProductFavorite.product_id, func.count(ProductFavorite.id).label("favorite_count"))
+        .group_by(ProductFavorite.product_id)
+        .subquery()
     )
 
 
@@ -56,11 +67,13 @@ def list_products(
         .group_by(ChatRoom.product_id)
         .subquery()
     )
+    favorite_count_subq = _favorite_count_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count)
+        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
+        .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
     )
     if region_id is not None:
         query = query.filter(Product.region_id == region_id)
@@ -79,7 +92,10 @@ def list_products(
         .limit(size)
         .all()
     )
-    items = [_to_list_item(p, dong_name, chat_count or 0) for p, dong_name, chat_count in rows]
+    items = [
+        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
+        for p, dong_name, chat_count, favorite_count in rows
+    ]
     return schema.ProductListResponse(items=items, total=total)
 
 
@@ -94,7 +110,10 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         raise NotFoundError("상품을 찾을 수 없습니다.")
     product, dong_name = row
     chat_count = db.query(func.count(ChatRoom.id)).filter(ChatRoom.product_id == product.id).scalar()
-    item = _to_list_item(product, dong_name, chat_count or 0)
+    favorite_count = (
+        db.query(func.count(ProductFavorite.id)).filter(ProductFavorite.product_id == product.id).scalar()
+    )
+    item = _to_list_item(product, dong_name, chat_count or 0, favorite_count or 0)
     return schema.ProductDetailResponse(
         **item.model_dump(), category=product.category, search_keyword=product.search_keyword
     )
@@ -125,3 +144,65 @@ def update_product(db: Session, user: User, product_id: int, data: schema.Produc
     db.commit()
     db.refresh(product)
     return product
+
+
+def _favorite_count(db: Session, product_id: int) -> int:
+    return db.query(func.count(ProductFavorite.id)).filter(ProductFavorite.product_id == product_id).scalar() or 0
+
+
+def add_favorite(db: Session, user: User, product_id: int) -> schema.FavoriteToggleResponse:
+    if db.get(Product, product_id) is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+
+    existing = (
+        db.query(ProductFavorite)
+        .filter(ProductFavorite.user_id == user.id, ProductFavorite.product_id == product_id)
+        .first()
+    )
+    if existing is None:
+        db.add(ProductFavorite(user_id=user.id, product_id=product_id))
+        db.commit()
+
+    return schema.FavoriteToggleResponse(favorited=True, favorite_count=_favorite_count(db, product_id))
+
+
+def remove_favorite(db: Session, user: User, product_id: int) -> schema.FavoriteToggleResponse:
+    if db.get(Product, product_id) is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+
+    db.query(ProductFavorite).filter(
+        ProductFavorite.user_id == user.id, ProductFavorite.product_id == product_id
+    ).delete()
+    db.commit()
+
+    return schema.FavoriteToggleResponse(favorited=False, favorite_count=_favorite_count(db, product_id))
+
+
+def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.ProductFavoritesResponse:
+    chat_count_subq = (
+        select(ChatRoom.product_id, func.count(ChatRoom.id).label("chat_count"))
+        .group_by(ChatRoom.product_id)
+        .subquery()
+    )
+    favorite_count_subq = _favorite_count_subq()
+
+    query = (
+        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        .join(ProductFavorite, ProductFavorite.product_id == Product.id)
+        .join(Region, Product.region_id == Region.id)
+        .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
+        .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        .filter(ProductFavorite.user_id == user.id)
+    )
+    total = query.count()
+    rows = (
+        query.order_by(ProductFavorite.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+    items = [
+        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
+        for p, dong_name, chat_count, favorite_count in rows
+    ]
+    return schema.ProductFavoritesResponse(items=items, total=total)

@@ -1,10 +1,18 @@
 from sqlalchemy.orm import Session
 
 from app.api.v1.chats import schema
-from app.core.exceptions import AppError, NotFoundError
-from app.models.chat import ChatRoom, ChatRoomParticipant
+from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
+from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.product import Product
 from app.models.user import User
+
+
+def _get_participant(db: Session, chat_room_id: int, user_id: int) -> ChatRoomParticipant | None:
+    return (
+        db.query(ChatRoomParticipant)
+        .filter(ChatRoomParticipant.chat_room_id == chat_room_id, ChatRoomParticipant.user_id == user_id)
+        .first()
+    )
 
 
 def create_chat_room(db: Session, user: User, data: schema.ChatRoomCreateRequest) -> schema.ChatRoomResponse:
@@ -61,3 +69,53 @@ def list_my_chat_rooms(db: Session, user: User, page: int, size: int) -> schema.
         for room, unread_count in rows
     ]
     return schema.ChatRoomListResponse(items=items, total=total)
+
+
+def send_message(
+    db: Session, user: User, chat_room_id: int, data: schema.MessageCreateRequest
+) -> schema.MessageResponse:
+    room = db.get(ChatRoom, chat_room_id)
+    if room is None:
+        raise NotFoundError("채팅방을 찾을 수 없습니다.")
+    if _get_participant(db, chat_room_id, user.id) is None:
+        raise PermissionDeniedError("참여자만 메시지를 보낼 수 있습니다.")
+
+    message = ChatMessage(chat_room_id=chat_room_id, sender_id=user.id, content=data.content)
+    db.add(message)
+    db.flush()  # message.created_at 확보
+
+    room.last_message = message.content
+    room.last_message_at = message.created_at
+
+    # 실시간 push는 범위 밖(REST 폴링 전제) — 발신자를 제외한 참여자의 안읽음만 증가.
+    db.query(ChatRoomParticipant).filter(
+        ChatRoomParticipant.chat_room_id == chat_room_id,
+        ChatRoomParticipant.user_id != user.id,
+    ).update({ChatRoomParticipant.unread_count: ChatRoomParticipant.unread_count + 1})
+
+    db.commit()
+    db.refresh(message)
+    return schema.MessageResponse.model_validate(message)
+
+
+def list_messages(db: Session, user: User, chat_room_id: int, page: int, size: int) -> schema.MessageListResponse:
+    participant = _get_participant(db, chat_room_id, user.id)
+    if participant is None:
+        if db.get(ChatRoom, chat_room_id) is None:
+            raise NotFoundError("채팅방을 찾을 수 없습니다.")
+        raise PermissionDeniedError("참여자만 조회할 수 있습니다.")
+
+    query = db.query(ChatMessage).filter(ChatMessage.chat_room_id == chat_room_id)
+    total = query.count()
+    rows = (
+        query.order_by(ChatMessage.created_at.asc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+
+    participant.unread_count = 0
+    db.commit()
+
+    items = [schema.MessageResponse.model_validate(m) for m in rows]
+    return schema.MessageListResponse(items=items, total=total)
