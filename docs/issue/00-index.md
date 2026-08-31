@@ -10,7 +10,8 @@
 | --- | --- | --- | --- | --- |
 | 0 | [01-common-infra.md](01-common-infra.md) | 공통 인프라 | 선행 | 모든 EPIC의 전제조건 |
 | 1 | [02-auth.md](02-auth.md) | 회원관리 | 1순위 | 인증 없이는 다른 EPIC 진행 불가 |
-| 2 | [03-trades.md](03-trades.md) | 중고거래 | 1순위 | 핵심 기능 |
+| 1.5 | [10-marketplace-core.md](10-marketplace-core.md) | 중고거래(기본 마켓) | 실질적 선행 | 상품 등록/조회/채팅 — 기존 이슈 문서엔 없던 PRD TR-00 부분, `carrot/mock_contract.py` mock을 실제 API로 대체 |
+| 2 | [03-trades.md](03-trades.md) | 중고거래(가격분석) | 1순위 | 적정가격·거래빈도 분석. 10-marketplace-core와 별도 브랜치 |
 | 3 | [04-admin.md](04-admin.md) | 어드민 (데이터 현황) | 1순위 | AD-01, AD-02만 1순위 |
 | 4 | [05-local.md](05-local.md) | 갖가지 | 1순위 | |
 | 5 | [06-dream.md](06-dream.md) | 꿈가지 | 1순위 | |
