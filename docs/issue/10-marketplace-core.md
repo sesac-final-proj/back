@@ -25,41 +25,41 @@
 
 ### TASK-08-01: 상품 등록 — `POST /api/v1/trades/products` 🔒
 
-- [ ] `schema.ProductCreateRequest`(title, category, desired_price, trade_type) / `schema.ProductCreated`(id)
-- [ ] 로그인 사용자의 활동동네(`User.region_id`)를 상품 지역으로 사용, 활동동네 미설정 시 400
-- [ ] `trade_status` 기본값은 `SALE`
+- [x] `schema.ProductCreateRequest`(title, category, desired_price, trade_type) / `schema.ProductCreated`(id)
+- [x] 로그인 사용자의 활동동네(`User.region_id`)를 상품 지역으로 사용, 활동동네 미설정 시 400
+- [x] `trade_status` 기본값은 `SALE`
 - 완료조건(DoD): 정상 등록 시 201 + `Product` row 생성, 활동동네 미설정 400, 잘못된 `trade_type` 422
 
 ### TASK-08-02: 상품 목록 조회 — `GET /api/v1/trades/products`
 
-- [ ] `schema.ProductListItem`은 `carrot/mock_contract.py`의 `ProductListItem` 필드 그대로 맞춘다: `id`, `title`, `neighborhood_name`, `created_at`, `price`, `trade_status`, `trade_type`, `chat_count`, `favorite_count`
+- [x] `schema.ProductListItem`은 `carrot/mock_contract.py`의 `ProductListItem` 필드 그대로 맞춘다: `id`, `title`, `neighborhood_name`, `created_at`, `price`, `trade_status`, `trade_type`, `chat_count`, `favorite_count`
   - `neighborhood_name`은 `Region.dong_name`에서, `chat_count`/`favorite_count`는 우선 0 또는 관련 카운트 테이블이 생기기 전까지 스텁 처리 가능 (관심수 저장 테이블은 이 TASK 범위 밖 — 필요해지면 별도 TASK)
-- [ ] 지역/카테고리/거래상태(`trade_status`) 필터 + `app.core.pagination.Page` 사용
+- [x] 지역/카테고리/거래상태(`trade_status`) 필터 + `app.core.pagination.Page` 사용
 - 완료조건(DoD): 필터 조합 정상 동작, 결과 없어도 200 + 빈 배열
 
 ### TASK-08-03: 상품 상세 조회 — `GET /api/v1/trades/products/{product_id}`
 
-- [ ] 상세설명 등 목록에 없는 필드 포함 반환
-- [ ] 존재하지 않는 `product_id` → 404
+- [x] 상세설명 등 목록에 없는 필드 포함 반환
+- [x] 존재하지 않는 `product_id` → 404
 - 완료조건(DoD): 정상 조회 200, 없는 id 404
 
 ### TASK-08-04: 상품 거래상태 변경 — `PATCH /api/v1/trades/products/{product_id}/status` 🔒
 
-- [ ] `schema.ProductStatusUpdateRequest`(trade_status)
-- [ ] 본인(`created_by`)이 아닌 사용자가 변경 시도 → 403
-- [ ] 존재하지 않는 `product_id` → 404
+- [x] `schema.ProductStatusUpdateRequest`(trade_status)
+- [x] 본인(`created_by`)이 아닌 사용자가 변경 시도 → 403
+- [x] 존재하지 않는 `product_id` → 404
 - 완료조건(DoD): 정상 변경 200, 타인 소유 403, 없는 id 404, 잘못된 상태값 422
 
 ### TASK-08-05: 채팅방 생성 — `POST /api/v1/chats` 🔒
 
-- [ ] `schema.ChatRoomCreateRequest`(type, product_id nullable) / `schema.ChatRoomResponse`(`carrot/mock_contract.py`의 `ChatRoom` 필드 그대로: id, type, title, last_message, last_message_at, unread_count, verified)
-- [ ] `type="TRADE"`인데 `product_id`가 없으면 422
-- [ ] 채팅방 생성 시 요청자를 `ChatRoomParticipant`로 자동 추가
+- [x] `schema.ChatRoomCreateRequest`(type, product_id nullable) / `schema.ChatRoomResponse`(`carrot/mock_contract.py`의 `ChatRoom` 필드 그대로: id, type, title, last_message, last_message_at, unread_count, verified)
+- [x] `type="TRADE"`인데 `product_id`가 없으면 422
+- [x] 채팅방 생성 시 요청자를 `ChatRoomParticipant`로 자동 추가
 - 완료조건(DoD): TRADE 타입 정상 생성 200, product_id 없이 TRADE 생성 시도 422
 
 ### TASK-08-06: 내 채팅방 목록 — `GET /api/v1/chats` 🔒
 
-- [ ] 로그인 사용자가 `ChatRoomParticipant`로 속한 채팅방만 반환, 최근 메시지순 정렬
+- [x] 로그인 사용자가 `ChatRoomParticipant`로 속한 채팅방만 반환, 최근 메시지순 정렬
 - 완료조건(DoD): 참여 중인 방만 반환, 참여 없으면 빈 배열
 
 ## 비고
