@@ -1,12 +1,17 @@
+alembic==1.14.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
+bcrypt==4.2.1
 click==8.4.2
 fastapi==0.141.1
 h11==0.16.0
 httptools==0.8.0
 idna==3.19
+Mako==1.4.1
+MarkupSafe==3.0.3
 psycopg2-binary==2.9.12
+PyJWT==2.10.1
 pydantic==2.13.4
 pydantic_core==2.46.4
 pydantic-settings==2.15.0
