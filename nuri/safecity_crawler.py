@@ -539,6 +539,11 @@ def parse_args() -> argparse.Namespace:
         help="구별 CSV 파일로 자동 저장할 구 목록 (쉼표 구분, 기본값: '영등포구,송파구,노원구')",
     )
     parser.add_argument("--interval", type=int, default=600, help="반복 주기(초, 기본값: 600초 = 10분)")
+    parser.add_argument(
+        "--no-db-sync",
+        action="store_true",
+        help="CSV만 갱신하고 Supabase PostgreSQL 업서트는 건너뜁니다",
+    )
     parser.add_argument("--once", action="store_true", help="한 번만 수집하고 종료")
     parser.add_argument("--timeout", type=float, default=20.0, help="HTTP 제한 시간(초)")
     parser.add_argument("--verbose", action="store_true")
@@ -572,6 +577,7 @@ def main() -> int:
     try:
         while not stopping:
             ok = collect_once(client, connection)
+            cycle_ok = ok
             if ok:
                 if args.json:
                     json_count = export_json(connection, args.json)
@@ -590,8 +596,24 @@ def main() -> int:
                         dist_count = export_csv(connection, dist_csv_path, region=dist)
                         logging.info("구별 CSV 저장: %s (%d건)", dist_csv_path.name, dist_count)
 
+                if not args.no_db_sync and args.csv:
+                    try:
+                        from upload_to_supabase import build_records, upload
+
+                        records = build_records(args.csv.resolve())
+                        inserted, total = upload(records)
+                        logging.info(
+                            "Supabase 업서트: 처리 %d건, 신규 %d건, 누적 %d건",
+                            len(records),
+                            inserted,
+                            total,
+                        )
+                    except Exception:
+                        cycle_ok = False
+                        logging.exception("Supabase 업서트 실패; 다음 수집 주기에 재시도합니다")
+
             if args.once:
-                return 0 if ok else 1
+                return 0 if cycle_ok else 1
             deadline = time.monotonic() + max(10, args.interval)
             while not stopping and time.monotonic() < deadline:
                 time.sleep(min(1.0, deadline - time.monotonic()))

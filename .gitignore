@@ -9,3 +9,4 @@ __pycache__/
 .csv
 *.sqlite3-wal
 *.sqlite3-shm
+nuri/*.log

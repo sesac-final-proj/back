@@ -1,0 +1,16 @@
+do $$
+declare
+  existing_job_id bigint;
+begin
+  select jobid into existing_job_id
+  from cron.job
+  where jobname = 'sync-nuri-safecity-every-10-minutes';
+
+  if existing_job_id is not null then
+    perform cron.unschedule(existing_job_id);
+  end if;
+end
+$$;
+
+delete from vault.secrets
+where name in ('nuri_project_url', 'nuri_publishable_key');
