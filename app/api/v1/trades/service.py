@@ -61,6 +61,7 @@ def list_products(
     q: str | None,
     page: int,
     size: int,
+    created_by: int | None = None,
 ) -> schema.ProductListResponse:
     chat_count_subq = (
         select(ChatRoom.product_id, func.count(ChatRoom.id).label("chat_count"))
@@ -84,6 +85,8 @@ def list_products(
     if q:
         like = f"%{q}%"
         query = query.filter(or_(Product.title.ilike(like), Product.search_keyword.ilike(like)))
+    if created_by is not None:
+        query = query.filter(Product.created_by == created_by)
 
     total = query.count()
     rows = (
@@ -206,3 +209,17 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
         for p, dong_name, chat_count, favorite_count in rows
     ]
     return schema.ProductFavoritesResponse(items=items, total=total)
+
+
+def delete_product(db: Session, user: User, product_id: int) -> None:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+    if product.created_by != user.id:
+        raise PermissionDeniedError("본인 상품만 삭제할 수 있습니다.")
+
+    db.query(ProductFavorite).filter(ProductFavorite.product_id == product_id).delete()
+    # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
+    db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
+    db.delete(product)
+    db.commit()

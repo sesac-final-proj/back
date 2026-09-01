@@ -88,7 +88,19 @@
 - [x] 실시간 push(WebSocket 등)는 이 TASK 범위 밖 — REST로 보내고 받는 것까지만 (폴링 전제)
 - 완료조건(DoD): 메시지 전송 후 목록에 반영, 참여자 아닌 사용자가 조회 시도 시 403
 
+### TASK-08-11: 내 상품 목록 — `GET /api/v1/trades/products/mine` 🔒
+
+- [ ] 로그인 사용자가 `created_by`인 상품만 반환 (판매완료 포함 전체 상태), 기존 `list_products` 로직을 `created_by` 필터로 재사용 (중복 구현 안 함)
+- [ ] `/products/{product_id}`보다 먼저 라우터에 등록 (경로 세그먼트 수가 같아 순서 중요 — `/products/favorites`와 동일한 이유)
+- 완료조건(DoD): 본인이 등록한 상품만 반환, 없으면 빈 배열
+
+### TASK-08-12: 상품 삭제 — `DELETE /api/v1/trades/products/{product_id}` 🔒
+
+- [ ] 본인(`created_by`) 아니면 403, 없는 `product_id`면 404
+- [ ] 삭제 시 연관 데이터 정리: `ProductFavorite`는 같이 삭제(의미 없어지므로), 해당 상품을 참조하던 `ChatRoom.product_id`는 NULL로 변경(채팅 기록 자체는 보존 — `ChatRoom.product_id`가 원래 nullable로 설계돼 있어 그대로 활용)
+- 완료조건(DoD): 정상 삭제 204, 타인 소유 403, 없는 id 404, 삭제 후 목록/상세 조회 시 404
+
 ## 비고
 
-- **범위를 "중고거래 자체" 기능으로만 한정한다.** 동네생활(커뮤니티 게시판, `CommunityPost`/`Comment`/`PostReaction`)은 PRD·이슈 문서 어디에도 명시된 요구사항이 아니라서 이 이슈에서 다루지 않는다 (MVP 3주 일정상 핵심 3축에 집중, 필요해지면 별도 백로그).
+- **범위를 "중고거래 자체" 기능으로만 한정한다.** 동네생활(커뮤니티 게시판, `CommunityPost`/`Comment`/`PostReaction`)은 PRD·이슈 문서 어디에도 명시된 요구사항이 아니라서 이 이슈에서 다루지 않는다 (MVP 3주 일정상 핵심 3축에 집중, 필요해지면 별도 백로그). 실제 배포된 프론트(`ongaji.site`)에 "커뮤니티"/"중고차"/"부동산"/"기타 서비스" 메뉴가 보이지만, 확인 결과 버튼만 만들어둔 미구현 상태 — 백엔드도 대응하지 않는다.
 - 실시간 알림/푸시는 TASK-08-10에서도 범위 밖 — REST 폴링 전제로 시작.
