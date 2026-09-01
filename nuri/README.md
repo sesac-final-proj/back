@@ -8,7 +8,7 @@
 Python 3.10 이상만 필요하며 외부 패키지는 없습니다.
 
 ```powershell
-# 10분(600초)마다 영등포구, 송파구, 노원구 구별 CSV 자동 갱신 실행 (기본 동작)
+# 10분마다 CSV를 갱신하고 Supabase PostgreSQL에도 자동 업서트 (기본 동작)
 python .\safecity_crawler.py
 
 # 한 번만 수집하고 구별 CSV 및 전체 CSV 생성 후 종료
@@ -16,6 +16,21 @@ python .\safecity_crawler.py --once
 
 # 특정 구 지정하여 10분마다 수집 (예: 강남구, 서초구, 마포구)
 python .\safecity_crawler.py --districts "강남구,서초구,마포구"
+
+# 생성된 전체 CSV를 백엔드 .env의 Supabase PostgreSQL에 업서트
+..\.venv\Scripts\python.exe .\upload_to_supabase.py
+
+# DB에 쓰기 전 변환만 검증
+..\.venv\Scripts\python.exe .\upload_to_supabase.py --dry-run
+
+# Supabase 업서트 없이 CSV만 갱신
+python .\safecity_crawler.py --no-db-sync
+
+# Windows 배치 프로그램으로 10분마다 수집 및 Supabase 업서트
+.\run_safecity_batch.bat
+
+# 배치 경로를 한 번만 실행하여 점검
+.\run_safecity_batch.bat --once
 ```
 
 `Ctrl+C`로 안전하게 종료할 수 있습니다.
@@ -30,6 +45,24 @@ python .\safecity_crawler.py --districts "강남구,서초구,마포구"
   재처리할 수 있도록 보관합니다.
 - `safecity_events.json`: 매 수집 후 현재 사건 전체를 주요 필드와 원본 데이터로
   내보냅니다. 반복 실행 중에는 완성된 새 파일로 한 번에 교체됩니다.
+- `upload_to_supabase.py`: 전체 CSV를 `public.nuri_crawled`에
+  `source + event_id` 기준으로 업서트합니다. 구별 CSV는 `sigungu` 보강에만
+  사용하므로 같은 사건이 중복 저장되지 않습니다.
+- 기본 크롤러 실행은 매 수집 직후 위 업로더를 호출합니다. DB 연결이 일시적으로
+  실패해도 프로세스는 유지되며 다음 10분 수집 주기에 다시 시도합니다.
+- `run_safecity_batch.bat`: 크롤러를 1회 실행한 뒤 600초 대기하는 배치
+  프로그램입니다. 실행 로그는 `crawler.batch.log`에 누적됩니다.
+
+## 운영 자동화
+
+운영 환경은 로컬 배치 대신 Supabase Edge Function
+`sync-nuri-safecity`를 사용합니다. Supabase Cron 작업
+`sync-nuri-safecity-every-10-minutes`가 `*/10 * * * *` 일정으로 함수를
+호출하므로 개발 PC가 꺼져 있어도 계속 실행됩니다.
+
+- 함수 소스: `supabase/functions/sync-nuri-safecity/`
+- Cron 마이그레이션: `supabase/migrations/20260901022500_schedule_nuri_safecity_sync.sql`
+- 롤백 SQL: `supabase/rollback/20260901022500_unschedule_nuri_safecity_sync.sql`
 
 JSON의 최상위 구조는 다음과 같습니다.
 

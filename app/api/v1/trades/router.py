@@ -44,6 +44,18 @@ def list_my_favorites(
     return service.list_my_favorites(db, user, page, size)
 
 
+@router.get("/products/mine", response_model=schema.ProductListResponse)
+def list_my_products(
+    page: int = 1,
+    size: int = 20,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # /products/{product_id}보다 먼저 등록해야 "mine"이 product_id로
+    # 오인돼 매칭되지 않는다 (favorites와 동일한 이유).
+    return service.list_products(db, None, None, None, None, page, size, created_by=user.id)
+
+
 @router.get("/products/{product_id}", response_model=schema.ProductDetailResponse)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     return service.get_product_detail(db, product_id)
@@ -69,6 +81,15 @@ def update_product(
 ):
     service.update_product(db, user, product_id, body)
     return service.get_product_detail(db, product_id)
+
+
+@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(
+    product_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.delete_product(db, user, product_id)
 
 
 @router.post("/products/{product_id}/favorite", response_model=schema.FavoriteToggleResponse)

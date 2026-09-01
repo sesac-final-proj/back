@@ -109,6 +109,12 @@ def main():
         not_found = trade_service.list_products(db, None, None, None, "냉장고", page=1, size=20)
         assert not_found.total == 0
 
+        # 내 상품 목록
+        mine_owner = trade_service.list_products(db, None, None, None, None, page=1, size=20, created_by=owner.id)
+        assert mine_owner.total == 1 and mine_owner.items[0].id == product.id
+        mine_other = trade_service.list_products(db, None, None, None, None, page=1, size=20, created_by=other.id)
+        assert mine_other.total == 0
+
         # 채팅방: TRADE인데 product_id 없으면 DTO validator가 이미 막음
         try:
             ChatRoomCreateRequest(type="TRADE")
@@ -185,6 +191,33 @@ def main():
 
         room_after = db.get(ChatRoom, room.id)
         assert room_after.last_message == "아직 판매 중인가요?"
+
+        # 삭제
+        try:
+            trade_service.delete_product(db, other, product.id)
+            raise AssertionError("타인 소유 상품 삭제는 403이어야 한다")
+        except PermissionDeniedError:
+            pass
+
+        trade_service.delete_product(db, owner, product.id)
+        try:
+            trade_service.get_product_detail(db, product.id)
+            raise AssertionError("삭제된 상품 조회는 404여야 한다")
+        except NotFoundError:
+            pass
+
+        # 삭제 후에도 채팅방은 남아있고, product_id만 NULL로 끊긴다
+        room_after_delete = db.get(ChatRoom, room.id)
+        assert room_after_delete is not None
+        assert room_after_delete.product_id is None
+
+        try:
+            trade_service.delete_product(db, owner, -1)
+            raise AssertionError("없는 상품 삭제는 404여야 한다")
+        except NotFoundError:
+            pass
+
+        product_id = None  # 이미 삭제됨 -> finally에서 중복 처리 안 하도록
 
         print("marketplace-core self-check OK")
     finally:

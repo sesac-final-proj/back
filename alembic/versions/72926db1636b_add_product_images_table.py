@@ -1,7 +1,7 @@
 """add product_images table
 
-Revision ID: a1c2e9f5b6d3
-Revises: d4d0554591a5
+Revision ID: 72926db1636b
+Revises: f1b7d4a8c902
 Create Date: 2026-09-01 00:00:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'a1c2e9f5b6d3'
-down_revision: Union[str, None] = 'd4d0554591a5'
+revision: str = '72926db1636b'
+down_revision: Union[str, None] = 'f1b7d4a8c902'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

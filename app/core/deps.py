@@ -26,7 +26,12 @@ def get_current_user(
     if payload.get("type") != "access":
         raise credentials_error
 
-    user = db.get(User, int(payload["sub"]))
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        raise credentials_error
+
+    user = db.get(User, user_id)
     if user is None:
         raise credentials_error
     return user
