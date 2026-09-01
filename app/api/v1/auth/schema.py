@@ -44,6 +44,11 @@ class RefreshResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class RegionSummary(BaseModel):
     model_config = {"from_attributes": True}
 
