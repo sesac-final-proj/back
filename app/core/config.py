@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
 
+    # NCP Object Storage (S3 호환) — 중고거래 상품 이미지 업로드용
+    NCP_ACCESS_KEY: str
+    NCP_SECRET_KEY: str
+    NCP_BUCKET: str
+    NCP_ENDPOINT: str = "https://kr.object.ncloudstorage.com"
+    NCP_REGION: str = "kr-standard"
+
     @property
     def database_url(self) -> str:
         return (

@@ -39,14 +39,43 @@ class ProductListItem(BaseModel):
     trade_type: TradeType
     chat_count: int
     favorite_count: int
+    thumbnail_url: str | None = None
 
 
 ProductListResponse = Page[ProductListItem]
 
 
+class ProductImageItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    image_url: str
+    sort_order: int
+
+
 class ProductDetailResponse(ProductListItem):
     category: str
     search_keyword: str | None
+    images: list[ProductImageItem] = []
+
+
+class ImagePresignRequest(BaseModel):
+    filename: str
+    content_type: str
+
+
+class ImagePresignResponse(BaseModel):
+    upload_url: str
+    object_key: str
+    image_url: str
+
+
+class ImageRegisterRequest(BaseModel):
+    object_keys: list[str]
+
+
+class ProductImagesResponse(BaseModel):
+    images: list[ProductImageItem]
 
 
 class ProductStatusUpdateRequest(BaseModel):
