@@ -12,7 +12,7 @@ from app.core.exceptions import register_exception_handlers
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app.request")
 
-app = FastAPI()
+app = FastAPI(docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json")
 register_exception_handlers(app)
 
 # 로컬 프론트 개발 서버만 허용. 배포 origin은 나올 때 .env 기반 설정으로 분리.
@@ -44,11 +44,11 @@ app.include_router(chats_router)
 # app.include_router(auth_router)
 
 
-@app.get("/")
+@app.get("/api")
 def read_root():
     return {"message": "Hello, FastAPI"}
 
 
-@app.get("/health/db")
+@app.get("/api/health/db")
 def health_db():
     return {"db_connected": test_connection()}
