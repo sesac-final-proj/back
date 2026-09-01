@@ -44,11 +44,11 @@ app.include_router(chats_router)
 # app.include_router(auth_router)
 
 
-@app.get("/")
+@app.get("/api")
 def read_root():
     return {"message": "Hello, FastAPI"}
 
 
-@app.get("/health/db")
+@app.get("/api/health/db")
 def health_db():
     return {"db_connected": test_connection()}
