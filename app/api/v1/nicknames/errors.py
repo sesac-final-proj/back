@@ -1,0 +1,35 @@
+from dataclasses import dataclass
+
+
+NICKNAME_AVAILABLE = "NICKNAME_AVAILABLE"
+NICKNAME_REQUIRED = "NICKNAME_REQUIRED"
+NICKNAME_TOO_LONG = "NICKNAME_TOO_LONG"
+NICKNAME_CONTAINS_SPACE = "NICKNAME_CONTAINS_SPACE"
+NICKNAME_INVALID_CHARACTERS = "NICKNAME_INVALID_CHARACTERS"
+NICKNAME_REQUIRES_KOREAN = "NICKNAME_REQUIRES_KOREAN"
+NICKNAME_FORBIDDEN = "NICKNAME_FORBIDDEN"
+NICKNAME_ALREADY_EXISTS = "NICKNAME_ALREADY_EXISTS"
+NICKNAME_RECOMMENDATION_FAILED = "NICKNAME_RECOMMENDATION_FAILED"
+
+
+MESSAGES = {
+    NICKNAME_AVAILABLE: "사용 가능한 닉네임이에요.",
+    NICKNAME_REQUIRED: "닉네임을 입력해주세요.",
+    NICKNAME_TOO_LONG: "닉네임은 7자 이하로 입력해주세요.",
+    NICKNAME_CONTAINS_SPACE: "공백 없이 입력해주세요.",
+    NICKNAME_INVALID_CHARACTERS: "한글과 숫자만 입력해주세요.",
+    NICKNAME_REQUIRES_KOREAN: "한글을 포함해주세요.",
+    NICKNAME_FORBIDDEN: "사용할 수 없는 표현이 포함되어 있어요.",
+    NICKNAME_ALREADY_EXISTS: "이미 사용 중인 닉네임이에요.",
+    NICKNAME_RECOMMENDATION_FAILED: "원하는 닉네임을 직접 입력해주세요.",
+}
+
+
+@dataclass
+class NicknameError(Exception):
+    code: str
+    message: str
+
+
+def nickname_error(code: str) -> NicknameError:
+    return NicknameError(code=code, message=MESSAGES[code])

@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+.env.local
+.env.prod
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
@@ -10,3 +12,8 @@ __pycache__/
 *.sqlite3-wal
 *.sqlite3-shm
 nuri/*.log
+local_dev.db
+app/api/v1/nicknames/resources/forbidden_words.json
+app/api/v1/nicknames/resources/forbidden_words.local.json
+app/api/v1/nicknames/resources/forbidden_words.prod.json
+!app/api/v1/nicknames/resources/forbidden_words.example.json
