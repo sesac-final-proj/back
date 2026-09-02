@@ -133,6 +133,18 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
     return user
 
 
+def get_me_summary(db: Session, user: User) -> dict:
+    # trades(거래분석), dream(포인트) EPIC이 아직 없어서 0으로 스텁 응답
+    # (docs/issue/02-auth.md TASK-01-07 DoD: 다른 EPIC 미구현 상태에서도
+    # 500 대신 안전한 값으로 응답). 해당 EPIC이 생기면 각 서비스의 집계
+    # 함수를 여기서 호출하도록 교체.
+    return {
+        "region": user.region,
+        "trade_count": 0,
+        "point_balance": 0,
+    }
+
+
 def admin_login(db: Session, payload: LoginRequest) -> dict:
     user = db.scalar(select(User).where(User.email == payload.email, User.role == UserRole.ADMIN))
     if user is None or user.password_hash is None:

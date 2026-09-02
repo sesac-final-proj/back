@@ -6,6 +6,7 @@ from app.api.v1.auth.schema import (
     LoginRequest,
     LogoutRequest,
     MeResponse,
+    MeSummaryResponse,
     PasswordChangeRequest,
     RefreshRequest,
     RefreshResponse,
@@ -54,6 +55,11 @@ def update_region(
     db: Session = Depends(get_db),
 ):
     return service.update_region(db, user, payload)
+
+
+@router.get("/me/summary", response_model=MeSummaryResponse)
+def me_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return service.get_me_summary(db, user)
 
 
 @router.post("/admin/login", response_model=TokenResponse)
