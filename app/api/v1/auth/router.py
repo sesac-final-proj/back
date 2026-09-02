@@ -6,6 +6,7 @@ from app.api.v1.auth.schema import (
     LoginRequest,
     LogoutRequest,
     MeResponse,
+    MeSummaryResponse,
     PasswordChangeRequest,
     RefreshRequest,
     RefreshResponse,
@@ -39,8 +40,7 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=RefreshResponse)
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    tokens = service.refresh(db, payload.refresh_token)
-    return {"access_token": tokens["access_token"], "token_type": tokens["token_type"]}
+    return service.refresh(db, payload.refresh_token)
 
 
 @router.get("/me", response_model=MeResponse)
@@ -57,6 +57,11 @@ def update_region(
     return service.update_region(db, user, payload)
 
 
+@router.get("/me/summary", response_model=MeSummaryResponse)
+def me_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return service.get_me_summary(db, user)
+
+
 @router.post("/admin/login", response_model=TokenResponse)
 def admin_login(payload: LoginRequest, db: Session = Depends(get_db)):
     return service.admin_login(db, payload)
@@ -64,8 +69,7 @@ def admin_login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/admin/refresh", response_model=RefreshResponse)
 def admin_refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    tokens = service.refresh(db, payload.refresh_token, required_role="admin")
-    return {"access_token": tokens["access_token"], "token_type": tokens["token_type"]}
+    return service.refresh(db, payload.refresh_token, required_role="admin")
 
 
 @router.post("/admin/logout")
