@@ -39,8 +39,7 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=RefreshResponse)
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    tokens = service.refresh(db, payload.refresh_token)
-    return {"access_token": tokens["access_token"], "token_type": tokens["token_type"]}
+    return service.refresh(db, payload.refresh_token)
 
 
 @router.get("/me", response_model=MeResponse)
@@ -64,8 +63,7 @@ def admin_login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/admin/refresh", response_model=RefreshResponse)
 def admin_refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    tokens = service.refresh(db, payload.refresh_token, required_role="admin")
-    return {"access_token": tokens["access_token"], "token_type": tokens["token_type"]}
+    return service.refresh(db, payload.refresh_token, required_role="admin")
 
 
 @router.post("/admin/logout")
