@@ -4,8 +4,14 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.auth.router import legacy_router as legacy_auth_router
+from app.api.v1.auth.router import router as auth_router
 from app.api.v1.chats.router import router as chats_router
+from app.api.v1.local.router import router as local_router
+from app.api.v1.nicknames.router import router as nicknames_router
+from app.api.v1.real_estate.router import router as real_estate_router
 from app.api.v1.trades.router import router as trades_router
+from app.core.config import settings
 from app.core.db import test_connection
 from app.core.exceptions import register_exception_handlers
 
@@ -18,7 +24,11 @@ register_exception_handlers(app)
 # 로컬 프론트 개발 서버만 허용. 배포 origin은 나올 때 .env 기반 설정으로 분리.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        origin.strip()
+        for origin in settings.FRONTEND_ORIGINS.split(",")
+        if origin.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,10 +48,11 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(trades_router)
 app.include_router(chats_router)
-
-# 나머지 EPIC 라우터는 각 feat/{epic} 브랜치에서 완성되는 대로 여기에 include:
-# from app.api.v1.auth.router import router as auth_router
-# app.include_router(auth_router)
+app.include_router(local_router)
+app.include_router(auth_router)
+app.include_router(legacy_auth_router)
+app.include_router(nicknames_router)
+app.include_router(real_estate_router)
 
 
 @app.get("/api")

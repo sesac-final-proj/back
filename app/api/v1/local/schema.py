@@ -44,3 +44,25 @@ class CollectTriggerResponse(BaseModel):
 
 
 NoticeListResponse = Page[NoticeItem]
+
+
+class DangerSignalItem(BaseModel):
+    id: str
+    name: str
+    category: Literal["danger"] = "danger"
+    neighborhood_name: str | None = None
+    sigungu: str | None = None
+    distance: str
+    open_now: bool = True
+    liked: bool = False
+    summary: str
+    lat: float
+    lng: float
+    risk_type: str | None = None
+    observed_at: datetime | None = None
+    source_url: str | None = None
+
+
+class DangerSignalListResponse(BaseModel):
+    items: list[DangerSignalItem]
+    total: int
