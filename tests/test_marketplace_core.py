@@ -111,9 +111,12 @@ def main():
         assert updated.price == 20000
         assert updated.category == "가구"  # 안 건드린 필드는 유지
 
-        found = trade_service.list_products(db, None, None, None, "사이드", page=1, size=20)
+        # 실제 크롤링 데이터가 products에 같이 들어있을 수 있어(scripts/seed_products.py)
+        # region_id로 이 자가검증 전용 지역(region.id)에 스코프를 좁힌다 — 실데이터는
+        # 이 region_id를 절대 못 가지니 어떤 단어를 검색하든 서로 충돌할 일이 없다.
+        found = trade_service.list_products(db, region.id, None, None, "사이드", page=1, size=20)
         assert found.total == 1
-        not_found = trade_service.list_products(db, None, None, None, "존재하지않는검색어zzz999", page=1, size=20)
+        not_found = trade_service.list_products(db, region.id, None, None, "냉장고", page=1, size=20)
         assert not_found.total == 0
 
         # 내 상품 목록
