@@ -49,6 +49,7 @@ class ProductDetailResponse(ProductListItem):
     category: str
     search_keyword: str | None
     description: str | None
+    seller_manner_temp: float | None
 
 
 class ProductStatusUpdateRequest(BaseModel):

@@ -128,6 +128,9 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         category=product.category,
         search_keyword=product.search_keyword,
         description=product.description,
+        seller_manner_temp=(
+            float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
+        ),
     )
 
 
