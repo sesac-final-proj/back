@@ -23,6 +23,7 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
         title=data.title,
         category=data.category,
         desired_price=data.desired_price,
+        description=data.description,
         region_id=user.region_id,
         created_by=user.id,
         trade_status="SALE",
@@ -123,7 +124,10 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
     )
     item = _to_list_item(product, dong_name, chat_count or 0, favorite_count or 0)
     return schema.ProductDetailResponse(
-        **item.model_dump(), category=product.category, search_keyword=product.search_keyword
+        **item.model_dump(),
+        category=product.category,
+        search_keyword=product.search_keyword,
+        description=product.description,
     )
 
 

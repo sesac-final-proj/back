@@ -14,6 +14,7 @@ class ProductCreateRequest(BaseModel):
     category: str
     desired_price: int | None = None
     trade_type: TradeType = "SALE"
+    description: str | None = None
 
 
 class ProductCreated(BaseModel):
@@ -47,6 +48,7 @@ ProductListResponse = Page[ProductListItem]
 class ProductDetailResponse(ProductListItem):
     category: str
     search_keyword: str | None
+    description: str | None
 
 
 class ProductStatusUpdateRequest(BaseModel):
@@ -58,6 +60,7 @@ class ProductUpdateRequest(BaseModel):
     category: str | None = None
     desired_price: int | None = None
     search_keyword: str | None = None
+    description: str | None = None
 
 
 class FavoriteToggleResponse(BaseModel):
