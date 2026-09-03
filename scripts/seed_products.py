@@ -38,7 +38,12 @@ def seed() -> tuple[int, int]:
                     category=t.category,
                     search_keyword=t.search_keyword,
                     description=t.description,
+                    detail_category=t.detail_category,
+                    trade_place=t.trade_place,
+                    seller_nickname=t.seller_nickname,
                     seller_manner_temp=t.seller_manner_temp,
+                    view_count=t.view_count,
+                    interest_count=t.interest_count,
                     desired_price=t.price,
                     region_id=t.region_id,
                     created_by=None,  # 크롤링 원본 데이터 — 우리 서비스 유저 소유 아님

@@ -24,6 +24,8 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
         category=data.category,
         desired_price=data.desired_price,
         description=data.description,
+        detail_category=data.detail_category,
+        trade_place=data.trade_place,
         region_id=user.region_id,
         created_by=user.id,
         trade_status="SALE",
@@ -48,6 +50,7 @@ def _to_list_item(
         trade_type=product.trade_type,
         chat_count=chat_count,
         favorite_count=favorite_count,
+        view_count=product.view_count,
     )
 
 
@@ -128,9 +131,13 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         category=product.category,
         search_keyword=product.search_keyword,
         description=product.description,
+        detail_category=product.detail_category,
+        trade_place=product.trade_place,
+        seller_nickname=product.seller_nickname,
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
+        interest_count=product.interest_count,
     )
 
 
