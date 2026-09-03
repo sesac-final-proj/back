@@ -1,4 +1,7 @@
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import service
@@ -15,6 +18,7 @@ from app.api.v1.auth.schema import (
     SignupResponse,
     TokenResponse,
 )
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_admin
 from app.models.user import User
@@ -116,11 +120,16 @@ def legacy_social_login_url(provider: str):
     return service.oauth_login_url(provider)
 
 
-@legacy_router.get("/auth/callback/{provider}", response_model=TokenResponse)
+@legacy_router.get("/auth/callback/{provider}")
 def legacy_social_callback(
     provider: str,
     code: str,
     state: str | None = None,
     db: Session = Depends(get_db),
 ):
-    return service.oauth_callback(db, provider, code, state)
+    # 카카오/네이버 콘솔에 등록된 Redirect URI가 이 경로라 브라우저가 직접
+    # 도착한다 — JSON을 돌려주면 사용자가 빈 JSON 화면에 남으므로, 토큰을
+    # 쿼리스트링에 담아 프론트 콜백 페이지로 리다이렉트한다.
+    tokens = service.oauth_callback(db, provider, code, state)
+    query = urlencode(tokens)
+    return RedirectResponse(f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
