@@ -43,6 +43,7 @@ class ProductListItem(BaseModel):
     chat_count: int
     favorite_count: int
     view_count: int
+    interest_count: int
 
 
 ProductListResponse = Page[ProductListItem]
@@ -56,7 +57,6 @@ class ProductDetailResponse(ProductListItem):
     trade_place: str | None
     seller_nickname: str | None
     seller_manner_temp: float | None
-    interest_count: int
 
 
 class ProductStatusUpdateRequest(BaseModel):

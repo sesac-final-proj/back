@@ -32,14 +32,33 @@ def _parse_manner_temp(raw: str) -> float | None:
     return float(raw.replace("℃", "")) if raw else None
 
 
-def seed(csv_glob: str = "data/*.csv") -> int:
+def _parse_count(raw: str) -> int:
+    # 송파구 CSV엔 채팅수/관심수/조회수가 빈 문자열인 행이 있다(영등포구엔 없었음) — 0으로 취급.
+    raw = raw.strip()
+    return int(raw) if raw else 0
+
+
+def _truncate(raw: str | None, max_len: int) -> str | None:
+    # 컬럼이 varchar(200)인데 크롤러가 판매자 설명을 통째로 넣은 것 같은 이상치 행이
+    # 극소수 있다(송파구 CSV 2건) — 값을 버리는 대신 잘라서 저장.
+    if not raw:
+        return None
+    return raw[:max_len]
+
+
+def seed(csv_glob: str = "data/*.csv") -> tuple[int, int]:
     db = SessionLocal()
-    count = 0
+    count = skipped = 0
     try:
         region_by_name = {r.dong_name: r.id for r in db.query(Region).all()}
         for path in glob.glob(csv_glob):
             with open(path, encoding="utf-8-sig", newline="") as f:
                 for row in csv.DictReader(f):
+                    if not row["등록시각"].strip():
+                        # 크롤링이 상세페이지까지 못 긁은 불완전한 행 — listed_at이
+                        # NOT NULL이라 날짜를 지어내는 대신 건너뛴다.
+                        skipped += 1
+                        continue
                     db.add(
                         Transaction(
                             product_title=row["제목"],
@@ -49,13 +68,13 @@ def seed(csv_glob: str = "data/*.csv") -> int:
                             price=_parse_price(row),
                             region_id=region_by_name.get(row["지역"].strip()),
                             status=row["상태"],
-                            trade_place=row["거래희망장소"] or None,
+                            trade_place=_truncate(row["거래희망장소"], 200),
                             description=row["상세설명"] or None,
                             seller_nickname=row["판매자닉네임"] or None,
                             seller_manner_temp=_parse_manner_temp(row["매너온도"]),
-                            chat_count=int(row["채팅수"]),
-                            interest_count=int(row["관심수"]),
-                            view_count=int(row["조회수"]),
+                            chat_count=_parse_count(row["채팅수"]),
+                            interest_count=_parse_count(row["관심수"]),
+                            view_count=_parse_count(row["조회수"]),
                             listed_at=date.fromisoformat(row["등록시각"].strip()),
                         )
                     )
@@ -63,9 +82,9 @@ def seed(csv_glob: str = "data/*.csv") -> int:
         db.commit()
     finally:
         db.close()
-    return count
+    return count, skipped
 
 
 if __name__ == "__main__":
-    n = seed()
-    print(f"{n}건 적재 완료")
+    n, skipped = seed()
+    print(f"{n}건 적재 완료, {skipped}건 등록시각 누락으로 스킵")

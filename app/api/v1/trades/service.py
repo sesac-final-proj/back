@@ -51,6 +51,7 @@ def _to_list_item(
         chat_count=chat_count,
         favorite_count=favorite_count,
         view_count=product.view_count,
+        interest_count=product.interest_count,
     )
 
 
@@ -99,7 +100,10 @@ def list_products(
 
     total = query.count()
     rows = (
-        query.order_by(Product.created_at.desc())
+        # 크롤링 seed 데이터는 created_at이 날짜 단위(시분초 없음)라 같은 날짜인
+        # 행이 수천 건씩 동률 — id를 2차 정렬키로 안 주면 OFFSET 페이지네이션에서
+        # 동률 행 순서가 매 요청마다 달라져 페이지 간 중복/누락이 생김.
+        query.order_by(Product.created_at.desc(), Product.id.desc())
         .offset((page - 1) * size)
         .limit(size)
         .all()
@@ -137,7 +141,6 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
-        interest_count=product.interest_count,
     )
 
 
