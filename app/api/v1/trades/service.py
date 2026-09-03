@@ -118,7 +118,18 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
     )
     item = _to_list_item(product, dong_name, chat_count or 0, favorite_count or 0)
     return schema.ProductDetailResponse(
-        **item.model_dump(), category=product.category, search_keyword=product.search_keyword
+        **item.model_dump(),
+        category=product.category,
+        detail_category=product.detail_category,
+        search_keyword=product.search_keyword,
+        description=product.description,
+        trade_place=product.trade_place,
+        seller_nickname=product.seller_nickname,
+        seller_manner_temp=(
+            float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
+        ),
+        view_count=product.view_count,
+        interest_count=product.interest_count,
     )
 
 
