@@ -106,7 +106,9 @@ def main():
 
         found = trade_service.list_products(db, None, None, None, "사이드", page=1, size=20)
         assert found.total == 1
-        not_found = trade_service.list_products(db, None, None, None, "냉장고", page=1, size=20)
+        # 실제 크롤링 데이터가 products에 같이 들어있을 수 있어(scripts/seed_products.py)
+        # "냉장고" 같은 그럴듯한 한글 단어 대신 절대 매칭될 리 없는 문자열을 쓴다.
+        not_found = trade_service.list_products(db, None, None, None, "__NONEXISTENT_PRODUCT_QUERY__", page=1, size=20)
         assert not_found.total == 0
 
         # 내 상품 목록
