@@ -104,14 +104,17 @@ def main():
             pass
 
         trade_service.update_product(
-            db, owner, product.id, ProductUpdateRequest(title="원목 사이드 테이블(가격내림)", desired_price=20000)
+            db, owner, product.id, ProductUpdateRequest(title="원목 셀프체크XZQ99 테이블(가격내림)", desired_price=20000)
         )
         updated = trade_service.get_product_detail(db, product.id)
-        assert updated.title == "원목 사이드 테이블(가격내림)"
+        assert updated.title == "원목 셀프체크XZQ99 테이블(가격내림)"
         assert updated.price == 20000
         assert updated.category == "가구"  # 안 건드린 필드는 유지
 
-        found = trade_service.list_products(db, None, None, None, "사이드", page=1, size=20)
+        # 검색어는 실 시딩 데이터와 절대 안 겹치게 자가검증 전용 토큰을 쓴다
+        # (일반 단어 "사이드"/"냉장고" 등은 팀 공용 DB에 계속 쌓이는 실제 상품 데이터와
+        # 우연히 겹쳐서 종종 깨졌음).
+        found = trade_service.list_products(db, None, None, None, "셀프체크XZQ99", page=1, size=20)
         assert found.total == 1
         not_found = trade_service.list_products(db, None, None, None, "존재하지않는검색어zzz999", page=1, size=20)
         assert not_found.total == 0

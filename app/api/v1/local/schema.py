@@ -66,3 +66,21 @@ class DangerSignalItem(BaseModel):
 class DangerSignalListResponse(BaseModel):
     items: list[DangerSignalItem]
     total: int
+
+
+CongestionLevel = Literal["여유", "보통", "약간 붐빔", "붐빔", "정보없음"]
+
+
+class PlaceRecommendation(BaseModel):
+    """프론트 GajiMap.tsx의 클라이언트 로직과 필드명을 그대로 맞춘다."""
+
+    name: str
+    lat: float
+    lng: float
+    distanceMeters: int
+    congestionLevel: CongestionLevel
+    congestionMessage: str | None = None
+
+
+class PlaceRecommendationResponse(BaseModel):
+    results: list[PlaceRecommendation]
