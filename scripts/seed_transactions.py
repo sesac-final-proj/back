@@ -13,8 +13,15 @@ from app.models.region import Region
 from app.models.transaction import Transaction
 
 
-def _parse_price(raw: str) -> int | None:
-    raw = raw.strip()
+def _parse_price(row: dict) -> int | None:
+    # "가격원" 컬럼(정수 문자열, 무료나눔은 "0")이 있으면 그걸 우선 신뢰한다 —
+    # "111만 1,111원"처럼 "가격" 원문 텍스트만으로는 못 푸는 표기가 있어서다.
+    gawon = row.get("가격원", "").strip()
+    if gawon:
+        value = int(gawon)
+        return None if value == 0 else value
+
+    raw = row["가격"].strip()
     if not raw or raw == "무료나눔":
         return None
     return int(raw.replace(",", "").replace("원", ""))
@@ -39,7 +46,7 @@ def seed(csv_glob: str = "data/*.csv") -> int:
                             search_keyword=row["검색어"] or None,
                             category=row["카테고리"],
                             detail_category=row["상세카테고리"] or None,
-                            price=_parse_price(row["가격"]),
+                            price=_parse_price(row),
                             region_id=region_by_name.get(row["지역"].strip()),
                             status=row["상태"],
                             trade_place=row["거래희망장소"] or None,
