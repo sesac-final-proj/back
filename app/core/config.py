@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     NAVER_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/oauth/naver/callback"
     NAVER_MAPS_API_KEY_ID: str = ""
     NAVER_MAPS_API_KEY_SECRET: str = ""
+    SEOUL_OPEN_DATA_API_KEY: str = ""
 
     @property
     def database_url(self) -> str:
