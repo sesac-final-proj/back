@@ -76,6 +76,7 @@ def _to_response(room: ChatRoom, unread_count: int, is_seller: bool) -> schema.C
     return schema.ChatRoomResponse(
         id=room.id,
         type=room.type,
+        product_id=room.product_id,
         title=room.title,
         last_message=room.last_message,
         last_message_at=room.last_message_at,

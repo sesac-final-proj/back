@@ -26,6 +26,7 @@ class ChatRoomResponse(BaseModel):
 
     id: int
     type: ChatType
+    product_id: int | None
     title: str
     last_message: str | None
     last_message_at: datetime | None
