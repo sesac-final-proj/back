@@ -8,7 +8,11 @@ from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.product import Product
 from app.models.user import User
 
-_STATUS_MESSAGES = {"RESERVED": "예약중으로 변경했어요", "SOLD": "거래가 완료되었어요"}
+_STATUS_MESSAGES = {
+    "SALE": "판매중으로 변경했어요",
+    "RESERVED": "예약중으로 변경했어요",
+    "SOLD": "거래가 완료되었어요",
+}
 
 
 def _get_participant(db: Session, chat_room_id: int, user_id: int) -> ChatRoomParticipant | None:
@@ -72,6 +76,7 @@ def _to_response(room: ChatRoom, unread_count: int, is_seller: bool) -> schema.C
     return schema.ChatRoomResponse(
         id=room.id,
         type=room.type,
+        product_id=room.product_id,
         title=room.title,
         last_message=room.last_message,
         last_message_at=room.last_message_at,

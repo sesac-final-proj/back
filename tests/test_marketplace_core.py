@@ -240,6 +240,13 @@ def main():
         assert sold_msg.content == "거래가 완료되었어요"
         assert trade_service.get_product_detail(db, product.id).trade_status == "SOLD"
 
+        # 3단계 상태(판매중/예약중/거래완료)를 한 곳에서 오갈 수 있어야 한다 — 되돌리기 확인
+        sale_msg = chat_service.update_trade_status(
+            db, owner, room.id, ChatRoomStatusUpdateRequest(trade_status="SALE")
+        )
+        assert sale_msg.content == "판매중으로 변경했어요"
+        assert trade_service.get_product_detail(db, product.id).trade_status == "SALE"
+
         # 채팅방 나가기
         try:
             chat_service.leave_chat_room(db, stranger, room.id)
