@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     SEOUL_OPEN_DATA_API_KEY: str = ""
     SEOUL_CITYDATA_API_KEY: str = ""
 
+    # NCP Object Storage (S3 호환) — 중고거래 상품 이미지 업로드용
+    NCP_ACCESS_KEY: str = ""
+    NCP_SECRET_KEY: str = ""
+    NCP_BUCKET: str = ""
+    NCP_ENDPOINT: str = "https://kr.object.ncloudstorage.com"
+    NCP_REGION: str = "kr-standard"
+
     @property
     def database_url(self) -> str:
         if not self.DB_USER or not self.DB_PASSWORD:

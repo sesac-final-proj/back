@@ -110,6 +110,45 @@ def remove_favorite(
     return service.remove_favorite(db, user, product_id)
 
 
+@router.post("/products/{product_id}/images/presign", response_model=schema.ImagePresignResponse)
+def presign_product_image(
+    product_id: int,
+    body: schema.ImagePresignRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """업로드 전에 호출: NCP에 직접 PUT할 presigned URL을 받는다.
+
+    클라이언트는 이 upload_url로 이미지를 PUT한 뒤, object_key를
+    POST /products/{id}/images 에 보내 등록을 마무리한다.
+    """
+    return service.presign_product_image(db, user, product_id, body)
+
+
+@router.post(
+    "/products/{product_id}/images",
+    response_model=schema.ProductImagesResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_product_images(
+    product_id: int,
+    body: schema.ImageRegisterRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.register_product_images(db, user, product_id, body.object_keys)
+
+
+@router.delete("/products/{product_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product_image(
+    product_id: int,
+    image_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.delete_product_image(db, user, product_id, image_id)
+
+
 @router.post("/analyses", response_model=schema.AnalysisCreated, status_code=status.HTTP_201_CREATED)
 def create_analysis(
     body: schema.AnalysisRequest,

@@ -5,11 +5,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.trades import schema
+from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.analysis import Analysis, AnalysisResult
 from app.models.chat import ChatRoom
 from app.models.favorite import ProductFavorite
 from app.models.product import Product
+from app.models.product_image import ProductImage
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -38,7 +40,11 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
 
 
 def _to_list_item(
-    product: Product, dong_name: str, chat_count: int, favorite_count: int
+    product: Product,
+    dong_name: str,
+    chat_count: int,
+    favorite_count: int,
+    thumbnail_object_key: str | None = None,
 ) -> schema.ProductListItem:
     return schema.ProductListItem(
         id=product.id,
@@ -52,6 +58,7 @@ def _to_list_item(
         favorite_count=favorite_count,
         view_count=product.view_count,
         interest_count=product.interest_count,
+        thumbnail_url=storage.public_url(thumbnail_object_key) if thumbnail_object_key else None,
     )
 
 
@@ -59,6 +66,16 @@ def _favorite_count_subq():
     return (
         select(ProductFavorite.product_id, func.count(ProductFavorite.id).label("favorite_count"))
         .group_by(ProductFavorite.product_id)
+        .subquery()
+    )
+
+
+def _thumbnail_subq():
+    # product당 sort_order가 가장 앞선 이미지 1장만 (Postgres DISTINCT ON).
+    return (
+        select(ProductImage.product_id, ProductImage.object_key)
+        .distinct(ProductImage.product_id)
+        .order_by(ProductImage.product_id, ProductImage.sort_order)
         .subquery()
     )
 
@@ -79,12 +96,20 @@ def list_products(
         .subquery()
     )
     favorite_count_subq = _favorite_count_subq()
+    thumbnail_subq = _thumbnail_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+            thumbnail_subq.c.object_key,
+        )
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        .outerjoin(thumbnail_subq, thumbnail_subq.c.product_id == Product.id)
     )
     if region_id is not None:
         query = query.filter(Product.region_id == region_id)
@@ -109,8 +134,8 @@ def list_products(
         .all()
     )
     items = [
-        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
-        for p, dong_name, chat_count, favorite_count in rows
+        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0, thumbnail_key)
+        for p, dong_name, chat_count, favorite_count, thumbnail_key in rows
     ]
     return schema.ProductListResponse(items=items, total=total)
 
@@ -129,7 +154,10 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
     favorite_count = (
         db.query(func.count(ProductFavorite.id)).filter(ProductFavorite.product_id == product.id).scalar()
     )
+    images = _list_product_images(db, product.id).images
+    thumbnail_key = images[0].image_url if images else None
     item = _to_list_item(product, dong_name, chat_count or 0, favorite_count or 0)
+    item.thumbnail_url = thumbnail_key
     return schema.ProductDetailResponse(
         **item.model_dump(),
         category=product.category,
@@ -141,6 +169,7 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
+        images=images,
     )
 
 
@@ -210,13 +239,21 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
         .subquery()
     )
     favorite_count_subq = _favorite_count_subq()
+    thumbnail_subq = _thumbnail_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+            thumbnail_subq.c.object_key,
+        )
         .join(ProductFavorite, ProductFavorite.product_id == Product.id)
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        .outerjoin(thumbnail_subq, thumbnail_subq.c.product_id == Product.id)
         .filter(ProductFavorite.user_id == user.id)
     )
     total = query.count()
@@ -227,8 +264,8 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
         .all()
     )
     items = [
-        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
-        for p, dong_name, chat_count, favorite_count in rows
+        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0, thumbnail_key)
+        for p, dong_name, chat_count, favorite_count, thumbnail_key in rows
     ]
     return schema.ProductFavoritesResponse(items=items, total=total)
 
@@ -240,10 +277,84 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
     if product.created_by != user.id:
         raise PermissionDeniedError("본인 상품만 삭제할 수 있습니다.")
 
+    images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
+    for image in images:
+        storage.delete_object(image.object_key)
+    db.query(ProductImage).filter(ProductImage.product_id == product_id).delete()
     db.query(ProductFavorite).filter(ProductFavorite.product_id == product_id).delete()
     # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
     db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
     db.delete(product)
+    db.commit()
+
+
+def _get_owned_product(db: Session, user: User, product_id: int) -> Product:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+    if product.created_by != user.id:
+        raise PermissionDeniedError("본인 상품에만 이미지를 등록/삭제할 수 있습니다.")
+    return product
+
+
+def presign_product_image(
+    db: Session, user: User, product_id: int, data: schema.ImagePresignRequest
+) -> schema.ImagePresignResponse:
+    _get_owned_product(db, user, product_id)
+    try:
+        object_key = storage.build_object_key(product_id, data.content_type)
+    except ValueError as e:
+        raise AppError(str(e))
+    return schema.ImagePresignResponse(
+        upload_url=storage.presigned_put_url(object_key, data.content_type),
+        object_key=object_key,
+        image_url=storage.public_url(object_key),
+    )
+
+
+def _list_product_images(db: Session, product_id: int) -> schema.ProductImagesResponse:
+    rows = (
+        db.query(ProductImage)
+        .filter(ProductImage.product_id == product_id)
+        .order_by(ProductImage.sort_order)
+        .all()
+    )
+    items = [
+        schema.ProductImageItem(id=r.id, image_url=storage.public_url(r.object_key), sort_order=r.sort_order)
+        for r in rows
+    ]
+    return schema.ProductImagesResponse(images=items)
+
+
+def register_product_images(
+    db: Session, user: User, product_id: int, object_keys: list[str]
+) -> schema.ProductImagesResponse:
+    _get_owned_product(db, user, product_id)
+
+    # presign이 내준 키만 등록 가능 — 다른 상품 폴더의 키를 갖다 붙이는 걸 막는다.
+    prefix = f"products/{product_id}/"
+    for key in object_keys:
+        if not key.startswith(prefix):
+            raise AppError("잘못된 이미지 키입니다.")
+
+    next_order = db.query(func.max(ProductImage.sort_order)).filter(ProductImage.product_id == product_id).scalar()
+    start = (next_order + 1) if next_order is not None else 0
+    for i, key in enumerate(object_keys):
+        db.add(ProductImage(product_id=product_id, object_key=key, sort_order=start + i))
+    db.commit()
+
+    return _list_product_images(db, product_id)
+
+
+def delete_product_image(db: Session, user: User, product_id: int, image_id: int) -> None:
+    _get_owned_product(db, user, product_id)
+
+    image = db.get(ProductImage, image_id)
+    if image is None or image.product_id != product_id:
+        raise NotFoundError("이미지를 찾을 수 없습니다.")
+
+    storage.delete_object(image.object_key)
+    db.delete(image)
     db.commit()
 
 
