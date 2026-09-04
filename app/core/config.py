@@ -58,12 +58,6 @@ class Settings(BaseSettings):
     NAVER_MAPS_API_KEY_SECRET: str = ""
     SEOUL_OPEN_DATA_API_KEY: str = ""
 
-    # SMS 인증 (Solapi). 발급 전엔 send_sms가 콘솔 로그로 대체 발송한다 — dev 단계에서
-    # 실제 SMS 없이도 인증 흐름 자체는 바로 테스트 가능하게.
-    SOLAPI_API_KEY: str = ""
-    SOLAPI_API_SECRET: str = ""
-    SOLAPI_SENDER_NUMBER: str = ""
-
     @property
     def database_url(self) -> str:
         if not self.DB_USER or not self.DB_PASSWORD:

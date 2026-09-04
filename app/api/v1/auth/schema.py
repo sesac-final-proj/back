@@ -63,7 +63,7 @@ class MeResponse(BaseModel):
     email: str
     nickname: str
     nickname_set: bool
-    phone_verified: bool
+    phone_number: str | None
     profile_image_url: str | None
     role: UserRole
     region: RegionSummary | None
@@ -88,15 +88,8 @@ class MeSummaryResponse(BaseModel):
     point_balance: int
 
 
-class PhoneSendCodeRequest(BaseModel):
-    # 010xxxxxxxx 형태만 받는다 — 하이픈/공백은 프론트에서 벗겨서 보내도록.
-    phone_number: str
-
-
-class PhoneVerifyRequest(BaseModel):
-    phone_number: str
-    code: str
-
-
-class ProfileImageUpdateRequest(BaseModel):
+class ProfileUpdateRequest(BaseModel):
+    # 인증 없이 그냥 수집만 한다 — 010xxxxxxxx 형태로, 하이픈/공백은 프론트에서
+    # 벗겨서 보내도록. 둘 다 optional이라 값이 있는 필드만 부분 갱신된다.
+    phone_number: str | None = None
     profile_image_url: str | None = None

@@ -25,8 +25,9 @@ class User(Base):
     # non-null이란 사실만으론 "본인이 실제로 골랐는지"를 구분 못 한다 — 온보딩 단계
     # 판단(닉네임 설정 화면을 또 보여줘야 하는지)에 별도 플래그가 필요.
     nickname_set: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # 인증(OTP) 없이 그냥 수집만 한다 — 알림톡/SMS 인증 로직은 사업자 인증 등
+    # 선행 조건이 갖춰질 때까지 보류.
     phone_number: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
-    phone_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     profile_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 실제 DB 컬럼은 Postgres 네이티브 enum이 아니라 plain varchar + CHECK
     # (role IN ('user','admin'), 소문자) — SQLAlchemy Enum을 쓰면 (사용 안 하는)

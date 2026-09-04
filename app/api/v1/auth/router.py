@@ -11,9 +11,7 @@ from app.api.v1.auth.schema import (
     MeResponse,
     MeSummaryResponse,
     PasswordChangeRequest,
-    PhoneSendCodeRequest,
-    PhoneVerifyRequest,
-    ProfileImageUpdateRequest,
+    ProfileUpdateRequest,
     RefreshRequest,
     RefreshResponse,
     RegionUpdateRequest,
@@ -69,27 +67,13 @@ def me_summary(user: User = Depends(get_current_user), db: Session = Depends(get
     return service.get_me_summary(db, user)
 
 
-@router.put("/me/profile-image", response_model=MeResponse)
-def update_profile_image(
-    payload: ProfileImageUpdateRequest,
+@router.put("/me/profile", response_model=MeResponse)
+def update_profile(
+    payload: ProfileUpdateRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return service.update_profile_image(db, user, payload.profile_image_url)
-
-
-@router.post("/phone/send-code", status_code=204)
-def send_phone_code(payload: PhoneSendCodeRequest, user: User = Depends(get_current_user)):
-    service.send_phone_code(payload.phone_number)
-
-
-@router.post("/phone/verify", response_model=MeResponse)
-def verify_phone_code(
-    payload: PhoneVerifyRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return service.verify_phone_code(db, user, payload)
+    return service.update_profile(db, user, payload)
 
 
 @router.post("/admin/login", response_model=TokenResponse)

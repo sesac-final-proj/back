@@ -1,4 +1,3 @@
-import random
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
@@ -14,19 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.auth.schema import (
     LoginRequest,
-    PhoneVerifyRequest,
+    ProfileUpdateRequest,
     RegionUpdateRequest,
     SignupRequest,
 )
 from app.core.config import settings
-from app.core.redis_client import (
-    check_phone_code,
-    clear_phone_code,
-    is_refresh_token_valid,
-    revoke_refresh_token,
-    save_phone_code,
-    save_refresh_token,
-)
+from app.core.redis_client import is_refresh_token_valid, revoke_refresh_token, save_refresh_token
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -34,7 +26,6 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.core.sms_client import send_sms
 from app.models.region import Region
 from app.models.user import SocialAccount, User, UserRole
 
@@ -133,38 +124,16 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
     return user
 
 
-def send_phone_code(phone_number: str) -> None:
-    code = f"{random.randint(0, 999999):06d}"
-    save_phone_code(phone_number, code)
-    try:
-        send_sms(phone_number, f"[가지마켓] 인증번호 [{code}]를 입력해주세요.")
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="인증문자를 보내지 못했습니다."
-        ) from exc
-
-
-def verify_phone_code(db: Session, user: User, payload: PhoneVerifyRequest) -> User:
-    if not check_phone_code(payload.phone_number, payload.code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않거나 만료됐습니다."
-        )
-    clear_phone_code(payload.phone_number)
-
-    user.phone_number = payload.phone_number
-    user.phone_verified = True
+def update_profile(db: Session, user: User, payload: ProfileUpdateRequest) -> User:
+    # 인증 없이 그냥 수집 — exclude_unset이라 요청에 안 담긴 필드는 건드리지 않는다
+    # (예: 사진만 다시 올릴 때 전화번호가 None으로 지워지는 걸 방지).
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 전화번호입니다.") from exc
-    db.refresh(user)
-    return user
-
-
-def update_profile_image(db: Session, user: User, profile_image_url: str | None) -> User:
-    user.profile_image_url = profile_image_url
-    db.commit()
     db.refresh(user)
     return user
 
