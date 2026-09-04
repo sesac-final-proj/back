@@ -11,6 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.local import schema
 from app.core.config import settings
+from app.models.region import Region
+
+
+def list_regions(db: Session) -> schema.RegionListResponse:
+    regions = db.query(Region).order_by(Region.gu_name, Region.dong_name).all()
+    return schema.RegionListResponse(items=[schema.RegionItem.model_validate(r) for r in regions])
+
 
 KAKAO_KEYWORD_SEARCH_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
 SEOUL_CITYDATA_BASE = "http://openapi.seoul.go.kr:8088"

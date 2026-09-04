@@ -116,7 +116,7 @@ def main():
         # 우연히 겹쳐서 종종 깨졌음).
         found = trade_service.list_products(db, None, None, None, "셀프체크XZQ99", page=1, size=20)
         assert found.total == 1
-        not_found = trade_service.list_products(db, None, None, None, "존재하지않는검색어zzz999", page=1, size=20)
+        not_found = trade_service.list_products(db, region.id, None, None, "냉장고", page=1, size=20)
         assert not_found.total == 0
 
         # 내 상품 목록

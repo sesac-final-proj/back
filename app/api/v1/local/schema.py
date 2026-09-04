@@ -68,6 +68,18 @@ class DangerSignalListResponse(BaseModel):
     total: int
 
 
+class RegionItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    dong_name: str
+    gu_name: str
+
+
+class RegionListResponse(BaseModel):
+    items: list[RegionItem]
+
+
 CongestionLevel = Literal["여유", "보통", "약간 붐빔", "붐빔", "정보없음"]
 
 
