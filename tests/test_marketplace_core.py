@@ -111,10 +111,10 @@ def main():
         assert updated.price == 20000
         assert updated.category == "가구"  # 안 건드린 필드는 유지
 
-        # 검색어는 실 시딩 데이터와 절대 안 겹치게 자가검증 전용 토큰을 쓴다
-        # (일반 단어 "사이드"/"냉장고" 등은 팀 공용 DB에 계속 쌓이는 실제 상품 데이터와
-        # 우연히 겹쳐서 종종 깨졌음).
-        found = trade_service.list_products(db, None, None, None, "셀프체크XZQ99", page=1, size=20)
+        # 실제 크롤링 데이터가 products에 같이 들어있을 수 있어(scripts/seed_products.py) 이중으로
+        # 방어한다: region_id로 자가검증 전용 지역에 스코프를 좁히고(실데이터는 이 region_id를
+        # 절대 못 가짐), 검색어도 실데이터와 안 겹칠 고유 토큰을 쓴다.
+        found = trade_service.list_products(db, region.id, None, None, "셀프체크XZQ99", page=1, size=20)
         assert found.total == 1
         not_found = trade_service.list_products(db, region.id, None, None, "냉장고", page=1, size=20)
         assert not_found.total == 0
