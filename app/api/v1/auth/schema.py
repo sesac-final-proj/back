@@ -62,6 +62,9 @@ class MeResponse(BaseModel):
     id: int
     email: str
     nickname: str
+    nickname_set: bool
+    phone_verified: bool
+    profile_image_url: str | None
     role: UserRole
     region: RegionSummary | None
     radius_m: int | None
@@ -83,3 +86,17 @@ class MeSummaryResponse(BaseModel):
     region: RegionSummary | None
     trade_count: int
     point_balance: int
+
+
+class PhoneSendCodeRequest(BaseModel):
+    # 010xxxxxxxx 형태만 받는다 — 하이픈/공백은 프론트에서 벗겨서 보내도록.
+    phone_number: str
+
+
+class PhoneVerifyRequest(BaseModel):
+    phone_number: str
+    code: str
+
+
+class ProfileImageUpdateRequest(BaseModel):
+    profile_image_url: str | None = None

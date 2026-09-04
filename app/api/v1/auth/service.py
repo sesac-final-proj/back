@@ -1,3 +1,4 @@
+import random
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
@@ -13,11 +14,19 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.auth.schema import (
     LoginRequest,
+    PhoneVerifyRequest,
     RegionUpdateRequest,
     SignupRequest,
 )
 from app.core.config import settings
-from app.core.redis_client import is_refresh_token_valid, revoke_refresh_token, save_refresh_token
+from app.core.redis_client import (
+    check_phone_code,
+    clear_phone_code,
+    is_refresh_token_valid,
+    revoke_refresh_token,
+    save_phone_code,
+    save_refresh_token,
+)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -25,6 +34,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.core.sms_client import send_sms
 from app.models.region import Region
 from app.models.user import SocialAccount, User, UserRole
 
@@ -52,6 +62,7 @@ def signup(db: Session, payload: SignupRequest) -> User:
         email=payload.email,
         password_hash=hash_password(payload.password),
         nickname=payload.nickname,
+        nickname_set=True,  # 직접 입력한 닉네임이라 온보딩 닉네임 설정 단계가 필요 없음
         role=UserRole.USER,
     )
     db.add(user)
@@ -117,6 +128,42 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
 
     user.region_id = region.id
     user.radius_m = payload.radius_m
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def send_phone_code(phone_number: str) -> None:
+    code = f"{random.randint(0, 999999):06d}"
+    save_phone_code(phone_number, code)
+    try:
+        send_sms(phone_number, f"[가지마켓] 인증번호 [{code}]를 입력해주세요.")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="인증문자를 보내지 못했습니다."
+        ) from exc
+
+
+def verify_phone_code(db: Session, user: User, payload: PhoneVerifyRequest) -> User:
+    if not check_phone_code(payload.phone_number, payload.code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않거나 만료됐습니다."
+        )
+    clear_phone_code(payload.phone_number)
+
+    user.phone_number = payload.phone_number
+    user.phone_verified = True
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 전화번호입니다.") from exc
+    db.refresh(user)
+    return user
+
+
+def update_profile_image(db: Session, user: User, profile_image_url: str | None) -> User:
+    user.profile_image_url = profile_image_url
     db.commit()
     db.refresh(user)
     return user
