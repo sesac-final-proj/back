@@ -37,7 +37,7 @@ class ChatRoomResponse(BaseModel):
 ChatRoomListResponse = Page[ChatRoomResponse]
 
 
-ChatTradeStatus = Literal["RESERVED", "SOLD"]
+ChatTradeStatus = Literal["SALE", "RESERVED", "SOLD"]
 
 
 class ChatRoomStatusUpdateRequest(BaseModel):
