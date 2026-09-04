@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.auth.router import legacy_router as legacy_auth_router
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.chats.router import router as chats_router
+from app.api.v1.dream.router import router as dream_router
 from app.api.v1.local.router import router as local_router
 from app.api.v1.nicknames.router import router as nicknames_router
 from app.api.v1.real_estate.router import router as real_estate_router
@@ -48,6 +49,7 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(trades_router)
 app.include_router(chats_router)
+app.include_router(dream_router)
 app.include_router(local_router)
 app.include_router(auth_router)
 app.include_router(legacy_auth_router)

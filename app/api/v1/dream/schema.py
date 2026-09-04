@@ -24,10 +24,22 @@ class PointBalanceResponse(BaseModel):
 class FacilityItem(BaseModel):
     model_config = {"from_attributes": True}
 
-    id: int
+    id: str
     name: str
-    region_name: str
-    description: str | None
+    district: str
+    facility_type: str
+    address: str
+    phone: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+
+
+class FacilityListResponse(BaseModel):
+    items: list[FacilityItem]
+    total: int
+    geocoded_count: int
+    source: Literal["seoul_open_data", "seoul_sample"]
+    notice: str | None = None
 
 
 class DonationSettingRequest(BaseModel):

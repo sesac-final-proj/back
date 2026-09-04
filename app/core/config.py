@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +58,12 @@ class Settings(BaseSettings):
     NAVER_MAPS_API_KEY_ID: str = ""
     NAVER_MAPS_API_KEY_SECRET: str = ""
     SEOUL_OPEN_DATA_API_KEY: str = ""
+    SEOUL_OPEN_API_KEY: str = Field(default="", repr=False)
+    SEOUL_CITYDATA_SERVICE: str = Field(default="", repr=False)
+    SEOUL_OPEN_API_BASE_URL: str = "http://openapi.seoul.go.kr:8088"
+    # Preserve existing deployments whose *_SERVICE variables contain API keys.
+    SEOUL_BIKE_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_BIKE_API_KEY", "SEOUL_BIKE_SERVICE"))
+    SEOUL_SUBWAY_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_SUBWAY_API_KEY", "SEOUL_SUBWAY_SERVICE", "SEOUL_SUBWAY_SERVIC"))
 
     @property
     def database_url(self) -> str:
