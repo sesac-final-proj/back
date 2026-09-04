@@ -14,6 +14,9 @@ class ProductCreateRequest(BaseModel):
     category: str
     desired_price: int | None = None
     trade_type: TradeType = "SALE"
+    description: str | None = None
+    detail_category: str | None = None
+    trade_place: str | None = None
 
 
 class ProductCreated(BaseModel):
@@ -39,6 +42,8 @@ class ProductListItem(BaseModel):
     trade_type: TradeType
     chat_count: int
     favorite_count: int
+    view_count: int
+    interest_count: int
     thumbnail_url: str | None = None
 
 
@@ -55,7 +60,12 @@ class ProductImageItem(BaseModel):
 
 class ProductDetailResponse(ProductListItem):
     category: str
+    detail_category: str | None
     search_keyword: str | None
+    description: str | None
+    trade_place: str | None
+    seller_nickname: str | None
+    seller_manner_temp: float | None
     images: list[ProductImageItem] = []
 
 
@@ -87,6 +97,9 @@ class ProductUpdateRequest(BaseModel):
     category: str | None = None
     desired_price: int | None = None
     search_keyword: str | None = None
+    description: str | None = None
+    detail_category: str | None = None
+    trade_place: str | None = None
 
 
 class FavoriteToggleResponse(BaseModel):

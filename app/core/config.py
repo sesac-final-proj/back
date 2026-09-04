@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     NAVER_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/oauth/naver/callback"
     NAVER_MAPS_API_KEY_ID: str = ""
     NAVER_MAPS_API_KEY_SECRET: str = ""
+    SEOUL_OPEN_DATA_API_KEY: str = ""
+    SEOUL_CITYDATA_API_KEY: str = ""
 
     # NCP Object Storage (S3 호환) — 중고거래 상품 이미지 업로드용
     NCP_ACCESS_KEY: str = ""

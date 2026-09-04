@@ -147,3 +147,48 @@ def delete_product_image(
     db: Session = Depends(get_db),
 ):
     service.delete_product_image(db, user, product_id, image_id)
+
+
+@router.post("/analyses", response_model=schema.AnalysisCreated, status_code=status.HTTP_201_CREATED)
+def create_analysis(
+    body: schema.AnalysisRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.create_analysis(db, user, body)
+
+
+@router.get("/analyses/{analysis_id}/similar", response_model=list[schema.SimilarTransactionItem])
+def get_similar_transactions(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_similar_transactions(db, user, analysis_id)
+
+
+@router.get("/analyses/{analysis_id}/price-range", response_model=schema.PriceRangeResponse)
+def get_price_range(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_price_range(db, user, analysis_id)
+
+
+@router.get("/analyses/{analysis_id}/frequency", response_model=schema.FrequencyResponse)
+def get_frequency(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_frequency(db, user, analysis_id)
+
+
+@router.get("/analyses/{analysis_id}/evidence", response_model=schema.EvidenceResponse)
+def get_evidence(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_evidence(db, user, analysis_id)
