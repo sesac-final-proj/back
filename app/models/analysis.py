@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -33,5 +32,8 @@ class AnalysisResult(Base):
     frequency_grade: Mapped[str] = mapped_column(String(10))
     sample_count: Mapped[int] = mapped_column(Integer, default=0)
     # avg_chat_count/avg_interest_count 등 근거 통계 + 근거 샘플(상위 N건)을 함께 담는다.
-    evidence_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # 736eeb896604(staging existing-baseline 마이그레이션)가 이미 plain JSON으로
+    # 만들어놔서 맞춘다 — JSONB 전용 연산자(포함검색 등)를 쓰지 않으니 상관없고,
+    # SQLite 기반 단위테스트(예: test_auth_nickname.py)와도 호환된다.
+    evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

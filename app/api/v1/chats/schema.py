@@ -31,9 +31,17 @@ class ChatRoomResponse(BaseModel):
     last_message_at: datetime | None
     unread_count: int
     verified: bool
+    is_seller: bool
 
 
 ChatRoomListResponse = Page[ChatRoomResponse]
+
+
+ChatTradeStatus = Literal["RESERVED", "SOLD"]
+
+
+class ChatRoomStatusUpdateRequest(BaseModel):
+    trade_status: ChatTradeStatus
 
 
 class MessageCreateRequest(BaseModel):

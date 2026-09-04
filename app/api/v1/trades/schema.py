@@ -51,9 +51,9 @@ ProductListResponse = Page[ProductListItem]
 
 class ProductDetailResponse(ProductListItem):
     category: str
+    detail_category: str | None
     search_keyword: str | None
     description: str | None
-    detail_category: str | None
     trade_place: str | None
     seller_nickname: str | None
     seller_manner_temp: float | None

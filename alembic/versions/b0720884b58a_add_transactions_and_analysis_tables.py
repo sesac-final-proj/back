@@ -1,84 +1,42 @@
 """add transactions and analysis tables
 
 Revision ID: b0720884b58a
-Revises: f1b7d4a8c902
+Revises: 5977a60cd3ba
 Create Date: 2026-09-01 00:00:00.000000
 
+이 마이그레이션이 만들던 transactions/analyses/analysis_results 테이블은
+staging에 먼저 합류한 736eeb896604(register_remaining_existing_tables)가
+이미 (호환되는 컬럼으로) 만들어서 테이블 생성 부분은 그대로 두면 "relation
+already exists"로 깨진다 — a1c2e9f5b6d3(existing_production_auth_schema)와
+같은 이유로 no-op 처리. 인덱스 2개는 736eeb896604에 없어서 여기서 계속
+만들되, 이미 있으면 건너뛴다(신규 DB든 이미 적용된 공용 dev DB든 안전).
 """
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
 revision: str = 'b0720884b58a'
-down_revision: Union[str, None] = 'f1b7d4a8c902'
+down_revision: Union[str, None] = '5977a60cd3ba'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "transactions",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("product_title", sa.String(length=200), nullable=False),
-        sa.Column("search_keyword", sa.String(length=100), nullable=True),
-        sa.Column("category", sa.String(length=50), nullable=False),
-        sa.Column("detail_category", sa.String(length=50), nullable=True),
-        sa.Column("price", sa.Integer(), nullable=True),
-        sa.Column("region_id", sa.Integer(), nullable=True),
-        sa.Column("status", sa.String(length=30), nullable=False),
-        sa.Column("trade_place", sa.String(length=200), nullable=True),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("seller_nickname", sa.String(length=100), nullable=True),
-        sa.Column("seller_manner_temp", sa.Numeric(4, 1), nullable=True),
-        sa.Column("chat_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("interest_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("view_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("listed_at", sa.Date(), nullable=False),
-        sa.Column("traded_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("collected_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["region_id"], ["regions.id"], ondelete="SET NULL"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("idx_transactions_region_category", "transactions", ["region_id", "category"])
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
-    op.create_table(
-        "analyses",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("product_id", sa.Integer(), nullable=False),
-        sa.Column("region_id", sa.Integer(), nullable=False),
-        sa.Column("requested_by", sa.Integer(), nullable=False),
-        sa.Column("status", sa.String(length=20), nullable=False, server_default="pending"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["product_id"], ["products.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["region_id"], ["regions.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("idx_analyses_requested_by", "analyses", ["requested_by"])
+    transactions_indexes = {i["name"] for i in inspector.get_indexes("transactions")}
+    if "idx_transactions_region_category" not in transactions_indexes:
+        op.create_index("idx_transactions_region_category", "transactions", ["region_id", "category"])
 
-    op.create_table(
-        "analysis_results",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("analysis_id", sa.Integer(), nullable=False),
-        sa.Column("price_min", sa.Integer(), nullable=True),
-        sa.Column("price_max", sa.Integer(), nullable=True),
-        sa.Column("frequency_grade", sa.String(length=10), nullable=False),
-        sa.Column("sample_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("evidence_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("computed_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("analysis_id"),
-    )
+    analyses_indexes = {i["name"] for i in inspector.get_indexes("analyses")}
+    if "idx_analyses_requested_by" not in analyses_indexes:
+        op.create_index("idx_analyses_requested_by", "analyses", ["requested_by"])
 
 
 def downgrade() -> None:
-    op.drop_table("analysis_results")
     op.drop_index("idx_analyses_requested_by", table_name="analyses")
-    op.drop_table("analyses")
     op.drop_index("idx_transactions_region_category", table_name="transactions")
-    op.drop_table("transactions")

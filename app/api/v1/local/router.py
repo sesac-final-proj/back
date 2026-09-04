@@ -15,3 +15,13 @@ def list_danger_signals(
     db: Session = Depends(get_db),
 ):
     return service.list_danger_signals(db, sigungu=sigungu, q=q, limit=limit)
+
+
+@router.get("/regions", response_model=schema.RegionListResponse)
+def list_regions(db: Session = Depends(get_db)):
+    return service.list_regions(db)
+
+
+@router.get("/recommend-place", response_model=schema.PlaceRecommendationResponse)
+def recommend_place(query: str = Query(..., min_length=1, max_length=100)):
+    return service.recommend_place(query)

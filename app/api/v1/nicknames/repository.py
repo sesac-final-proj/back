@@ -15,6 +15,7 @@ class NicknameRepository:
 
     def update_user_nickname(self, user: User, nickname: str) -> User:
         user.nickname = nickname
+        user.nickname_set = True
         try:
             self.db.commit()
         except IntegrityError as exc:

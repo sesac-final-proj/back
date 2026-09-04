@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     NAVER_MAPS_API_KEY_ID: str = ""
     NAVER_MAPS_API_KEY_SECRET: str = ""
     SEOUL_OPEN_DATA_API_KEY: str = ""
+    SEOUL_CITYDATA_API_KEY: str = ""
 
     @property
     def database_url(self) -> str:

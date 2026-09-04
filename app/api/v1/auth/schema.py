@@ -62,6 +62,9 @@ class MeResponse(BaseModel):
     id: int
     email: str
     nickname: str
+    nickname_set: bool
+    phone_number: str | None
+    profile_image_url: str | None
     role: UserRole
     region: RegionSummary | None
     radius_m: int | None
@@ -83,3 +86,10 @@ class MeSummaryResponse(BaseModel):
     region: RegionSummary | None
     trade_count: int
     point_balance: int
+
+
+class ProfileUpdateRequest(BaseModel):
+    # 인증 없이 그냥 수집만 한다 — 010xxxxxxxx 형태로, 하이픈/공백은 프론트에서
+    # 벗겨서 보내도록. 둘 다 optional이라 값이 있는 필드만 부분 갱신된다.
+    phone_number: str | None = None
+    profile_image_url: str | None = None

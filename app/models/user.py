@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -21,6 +21,14 @@ class User(Base):
     # 이메일 회원가입 유저는 앱 레벨에서 필수로 검증한다.
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     nickname: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    # 소셜 로그인 직후엔 임시 닉네임("사용자1234")이 자동으로 들어가 있어서, nickname이
+    # non-null이란 사실만으론 "본인이 실제로 골랐는지"를 구분 못 한다 — 온보딩 단계
+    # 판단(닉네임 설정 화면을 또 보여줘야 하는지)에 별도 플래그가 필요.
+    nickname_set: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # 인증(OTP) 없이 그냥 수집만 한다 — 알림톡/SMS 인증 로직은 사업자 인증 등
+    # 선행 조건이 갖춰질 때까지 보류.
+    phone_number: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
+    profile_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 실제 DB 컬럼은 Postgres 네이티브 enum이 아니라 plain varchar + CHECK
     # (role IN ('user','admin'), 소문자) — SQLAlchemy Enum을 쓰면 (사용 안 하는)
     # 동명의 user_role enum 타입으로 캐스팅을 시도해서 깨진다. String으로 저장하고

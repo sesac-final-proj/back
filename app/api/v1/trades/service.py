@@ -133,9 +133,9 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
     return schema.ProductDetailResponse(
         **item.model_dump(),
         category=product.category,
+        detail_category=product.detail_category,
         search_keyword=product.search_keyword,
         description=product.description,
-        detail_category=product.detail_category,
         trade_place=product.trade_place,
         seller_nickname=product.seller_nickname,
         seller_manner_temp=(
