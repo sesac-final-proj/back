@@ -2,6 +2,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.v1.local import schema
+from app.models.region import Region
+
+
+def list_regions(db: Session) -> schema.RegionListResponse:
+    regions = db.query(Region).order_by(Region.gu_name, Region.dong_name).all()
+    return schema.RegionListResponse(items=[schema.RegionItem.model_validate(r) for r in regions])
 
 
 def _compact(value: object, limit: int = 82) -> str:

@@ -66,3 +66,15 @@ class DangerSignalItem(BaseModel):
 class DangerSignalListResponse(BaseModel):
     items: list[DangerSignalItem]
     total: int
+
+
+class RegionItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    dong_name: str
+    gu_name: str
+
+
+class RegionListResponse(BaseModel):
+    items: list[RegionItem]
