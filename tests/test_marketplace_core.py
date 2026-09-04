@@ -104,17 +104,17 @@ def main():
             pass
 
         trade_service.update_product(
-            db, owner, product.id, ProductUpdateRequest(title="원목 사이드 테이블(가격내림)", desired_price=20000)
+            db, owner, product.id, ProductUpdateRequest(title="원목 셀프체크XZQ99 테이블(가격내림)", desired_price=20000)
         )
         updated = trade_service.get_product_detail(db, product.id)
-        assert updated.title == "원목 사이드 테이블(가격내림)"
+        assert updated.title == "원목 셀프체크XZQ99 테이블(가격내림)"
         assert updated.price == 20000
         assert updated.category == "가구"  # 안 건드린 필드는 유지
 
-        # 실제 크롤링 데이터가 products에 같이 들어있을 수 있어(scripts/seed_products.py)
-        # region_id로 이 자가검증 전용 지역(region.id)에 스코프를 좁힌다 — 실데이터는
-        # 이 region_id를 절대 못 가지니 어떤 단어를 검색하든 서로 충돌할 일이 없다.
-        found = trade_service.list_products(db, region.id, None, None, "사이드", page=1, size=20)
+        # 검색어는 실 시딩 데이터와 절대 안 겹치게 자가검증 전용 토큰을 쓴다
+        # (일반 단어 "사이드"/"냉장고" 등은 팀 공용 DB에 계속 쌓이는 실제 상품 데이터와
+        # 우연히 겹쳐서 종종 깨졌음).
+        found = trade_service.list_products(db, None, None, None, "셀프체크XZQ99", page=1, size=20)
         assert found.total == 1
         not_found = trade_service.list_products(db, region.id, None, None, "냉장고", page=1, size=20)
         assert not_found.total == 0
