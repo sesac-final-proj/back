@@ -68,6 +68,19 @@ def _favorite_count_subq():
     )
 
 
+def list_categories(db: Session) -> schema.CategoryListResponse:
+    # "중고거래"는 실제 카테고리가 아니라 글쓰기 폼에서 카테고리를 안 고르면
+    # 들어가는 기본값이라, 필터 선택지에서는 제외한다.
+    rows = (
+        db.query(Product.category)
+        .filter(Product.category != "중고거래")
+        .distinct()
+        .order_by(Product.category)
+        .all()
+    )
+    return schema.CategoryListResponse(items=[r[0] for r in rows if r[0]])
+
+
 def list_products(
     db: Session,
     region_id: int | None,
@@ -77,6 +90,11 @@ def list_products(
     page: int,
     size: int,
     created_by: int | None = None,
+    trade_type: str | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    sort: str = "latest",
+    exclude_sold: bool = False,
 ) -> schema.ProductListResponse:
     chat_count_subq = (
         select(ChatRoom.product_id, func.count(ChatRoom.id).label("chat_count"))
@@ -102,22 +120,32 @@ def list_products(
         query = query.filter(Product.category == category)
     if trade_status is not None:
         query = query.filter(Product.trade_status == trade_status)
+    if exclude_sold:
+        query = query.filter(Product.trade_status != "SOLD")
     if q:
         like = f"%{q}%"
         query = query.filter(or_(Product.title.ilike(like), Product.search_keyword.ilike(like)))
     if created_by is not None:
         query = query.filter(Product.created_by == created_by)
+    if trade_type is not None:
+        query = query.filter(Product.trade_type == trade_type)
+    if price_min is not None:
+        query = query.filter(Product.desired_price >= price_min)
+    if price_max is not None:
+        query = query.filter(Product.desired_price <= price_max)
+
+    # id를 항상 2차 정렬키로 준다 — 크롤링 seed 데이터는 created_at이 날짜 단위(시분초
+    # 없음)라 같은 날짜인 행이 수천 건씩 동률이라, 이게 없으면 OFFSET 페이지네이션에서
+    # 동률 행 순서가 매 요청마다 달라져 페이지 간 중복/누락이 생김.
+    if sort == "price_asc":
+        order = (Product.desired_price.asc().nullslast(), Product.id.desc())
+    elif sort == "price_desc":
+        order = (Product.desired_price.desc().nullslast(), Product.id.desc())
+    else:
+        order = (Product.created_at.desc(), Product.id.desc())
 
     total = query.count()
-    rows = (
-        # 크롤링 seed 데이터는 created_at이 날짜 단위(시분초 없음)라 같은 날짜인
-        # 행이 수천 건씩 동률 — id를 2차 정렬키로 안 주면 OFFSET 페이지네이션에서
-        # 동률 행 순서가 매 요청마다 달라져 페이지 간 중복/누락이 생김.
-        query.order_by(Product.created_at.desc(), Product.id.desc())
-        .offset((page - 1) * size)
-        .limit(size)
-        .all()
-    )
+    rows = query.order_by(*order).offset((page - 1) * size).limit(size).all()
     items = [
         _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
         for p, dong_name, chat_count, favorite_count in rows
