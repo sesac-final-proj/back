@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     # Preserve existing deployments whose *_SERVICE variables contain API keys.
     SEOUL_BIKE_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_BIKE_API_KEY", "SEOUL_BIKE_SERVICE"))
     SEOUL_SUBWAY_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_SUBWAY_API_KEY", "SEOUL_SUBWAY_SERVICE", "SEOUL_SUBWAY_SERVIC"))
+    SEOUL_CITYDATA_API_KEY: str = ""
 
     @property
     def database_url(self) -> str:

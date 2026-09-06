@@ -26,14 +26,23 @@ class ChatRoomResponse(BaseModel):
 
     id: int
     type: ChatType
+    product_id: int | None
     title: str
     last_message: str | None
     last_message_at: datetime | None
     unread_count: int
     verified: bool
+    is_seller: bool
 
 
 ChatRoomListResponse = Page[ChatRoomResponse]
+
+
+ChatTradeStatus = Literal["SALE", "RESERVED", "SOLD"]
+
+
+class ChatRoomStatusUpdateRequest(BaseModel):
+    trade_status: ChatTradeStatus
 
 
 class MessageCreateRequest(BaseModel):

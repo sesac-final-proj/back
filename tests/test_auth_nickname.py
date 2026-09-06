@@ -276,10 +276,16 @@ class AuthNicknameApiTest(unittest.TestCase):
                     },
                 },
             ):
-                response = self.client.get("/api/v1/auth/oauth/kakao/callback", params={"code": "abc"})
+                # follow_redirects=False: 실제 리다이렉트를 쫓아가면 localhost:3000에 떠
+                # 있는(혹은 안 떠 있는) 그 어떤 서버든 실제로 네트워크 호출을 하게 돼서
+                # 테스트가 그 서버 상태에 좌우된다 — Location 헤더만 검증한다.
+                response = self.client.get(
+                    "/api/v1/auth/oauth/kakao/callback", params={"code": "abc"}, follow_redirects=False
+                )
 
-            self.assertEqual(response.status_code, 200)
-            token_payload = decode_token(response.json()["access_token"])
+            self.assertEqual(response.status_code, 307)
+            redirect_query = parse_qs(urlparse(response.headers["location"]).query)
+            token_payload = decode_token(redirect_query["access_token"][0])
             self.assertEqual(token_payload["role"], "user")
             self.assertEqual(token_payload["provider"], "kakao")
 
@@ -341,10 +347,12 @@ class AuthNicknameApiTest(unittest.TestCase):
                 response = self.client.get(
                     "/api/v1/auth/oauth/naver/callback",
                     params={"code": "abc", "state": "state"},
+                    follow_redirects=False,
                 )
 
-            self.assertEqual(response.status_code, 200)
-            token_payload = decode_token(response.json()["access_token"])
+            self.assertEqual(response.status_code, 307)
+            redirect_query = parse_qs(urlparse(response.headers["location"]).query)
+            token_payload = decode_token(redirect_query["access_token"][0])
             self.assertEqual(token_payload["role"], "user")
             self.assertEqual(token_payload["provider"], "naver")
 

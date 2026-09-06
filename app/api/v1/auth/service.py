@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.auth.schema import (
     LoginRequest,
+    ProfileUpdateRequest,
     RegionUpdateRequest,
     SignupRequest,
 )
 from app.core.config import settings
+from app.core.redis_client import is_refresh_token_valid, revoke_refresh_token, save_refresh_token
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -25,7 +27,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.region import Region
-from app.models.user import RefreshToken, SocialAccount, User, UserRole
+from app.models.user import SocialAccount, User, UserRole
 
 
 def _unauthorized(message: str = "인증 정보가 유효하지 않습니다.") -> HTTPException:
@@ -37,9 +39,8 @@ def _token_pair(db: Session, user: User, provider: str = "local") -> dict:
     access_token = create_access_token(str(user.id), role=role, provider=provider)
     refresh_token = create_refresh_token(str(user.id), role=role, provider=provider)
     payload = decode_token(refresh_token)
-    expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-    db.add(RefreshToken(user_id=user.id, token=refresh_token, expires_at=expires_at))
-    db.commit()
+    ttl_seconds = int(payload["exp"] - datetime.now(timezone.utc).timestamp())
+    save_refresh_token(payload["jti"], user.id, ttl_seconds)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -47,17 +48,12 @@ def _token_pair(db: Session, user: User, provider: str = "local") -> dict:
     }
 
 
-def _is_expired(value: datetime) -> bool:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value < datetime.now(timezone.utc)
-
-
 def signup(db: Session, payload: SignupRequest) -> User:
     user = User(
         email=payload.email,
         password_hash=hash_password(payload.password),
         nickname=payload.nickname,
+        nickname_set=True,  # 직접 입력한 닉네임이라 온보딩 닉네임 설정 단계가 필요 없음
         role=UserRole.USER,
     )
     db.add(user)
@@ -90,16 +86,14 @@ def refresh(db: Session, refresh_token: str, required_role: str | None = None) -
     if required_role is not None and payload.get("role") != required_role:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="권한이 없습니다.")
 
-    session = db.scalar(select(RefreshToken).where(RefreshToken.token == refresh_token))
-    if session is None or session.revoked or _is_expired(session.expires_at):
+    if not is_refresh_token_valid(payload["jti"]):
         raise _unauthorized("폐기된 refresh token입니다.")
 
     user = db.get(User, int(payload["sub"]))
     if user is None:
         raise _unauthorized()
 
-    session.revoked = True
-    db.commit()
+    revoke_refresh_token(payload["jti"])
     return _token_pair(db, user, provider=payload.get("provider", "local"))
 
 
@@ -109,10 +103,7 @@ def logout(db: Session, refresh_token: str) -> dict:
     except jwt.PyJWTError:
         return {"message": "로그아웃되었습니다."}
 
-    session = db.scalar(select(RefreshToken).where(RefreshToken.token == refresh_token))
-    if session is not None:
-        session.revoked = True
-        db.commit()
+    revoke_refresh_token(payload["jti"])
     return {"message": "로그아웃되었습니다."}
 
 
@@ -129,6 +120,20 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
     user.region_id = region.id
     user.radius_m = payload.radius_m
     db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_profile(db: Session, user: User, payload: ProfileUpdateRequest) -> User:
+    # 인증 없이 그냥 수집 — exclude_unset이라 요청에 안 담긴 필드는 건드리지 않는다
+    # (예: 사진만 다시 올릴 때 전화번호가 None으로 지워지는 걸 방지).
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 전화번호입니다.") from exc
     db.refresh(user)
     return user
 
