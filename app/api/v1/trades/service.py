@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.trades import schema
+from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.analysis import Analysis, AnalysisResult
 from app.models.chat import ChatRoom
@@ -38,7 +39,10 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
 
 
 def _to_list_item(
-    product: Product, dong_name: str, chat_count: int, favorite_count: int
+    product: Product,
+    dong_name: str,
+    chat_count: int,
+    favorite_count: int,
 ) -> schema.ProductListItem:
     return schema.ProductListItem(
         id=product.id,
@@ -52,6 +56,7 @@ def _to_list_item(
         favorite_count=favorite_count,
         view_count=product.view_count,
         interest_count=product.interest_count,
+        thumbnail_url=storage.public_url(product.image_object_key) if product.image_object_key else None,
     )
 
 
@@ -81,7 +86,12 @@ def list_products(
     favorite_count_subq = _favorite_count_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+        )
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
@@ -115,7 +125,7 @@ def list_products(
     return schema.ProductListResponse(items=items, total=total)
 
 
-def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResponse:
+def get_product_detail(db: Session, product_id: int, user: User | None = None) -> schema.ProductDetailResponse:
     row = (
         db.query(Product, Region.dong_name)
         .join(Region, Product.region_id == Region.id)
@@ -141,6 +151,7 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
+        is_mine=user is not None and product.created_by == user.id,
     )
 
 
@@ -212,7 +223,12 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
     favorite_count_subq = _favorite_count_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+        )
         .join(ProductFavorite, ProductFavorite.product_id == Product.id)
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
@@ -240,10 +256,64 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
     if product.created_by != user.id:
         raise PermissionDeniedError("본인 상품만 삭제할 수 있습니다.")
 
+    if product.image_object_key:
+        storage.delete_object(product.image_object_key)
     db.query(ProductFavorite).filter(ProductFavorite.product_id == product_id).delete()
     # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
     db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
     db.delete(product)
+    db.commit()
+
+
+def _get_owned_product(db: Session, user: User, product_id: int) -> Product:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+    if product.created_by != user.id:
+        raise PermissionDeniedError("본인 상품에만 이미지를 등록/삭제할 수 있습니다.")
+    return product
+
+
+def presign_product_image(
+    db: Session, user: User, product_id: int, data: schema.ImagePresignRequest
+) -> schema.ImagePresignResponse:
+    _get_owned_product(db, user, product_id)
+    try:
+        object_key = storage.build_product_image_key(product_id, data.content_type)
+    except ValueError as e:
+        raise AppError(str(e))
+    return schema.ImagePresignResponse(
+        upload_url=storage.presigned_put_url(object_key, data.content_type),
+        object_key=object_key,
+        image_url=storage.public_url(object_key),
+    )
+
+
+def register_product_image(
+    db: Session, user: User, product_id: int, object_key: str
+) -> schema.ProductImageResponse:
+    product = _get_owned_product(db, user, product_id)
+
+    # presign이 내준 키만 등록 가능 — 다른 상품 키를 갖다 붙이는 걸 막는다.
+    if not object_key.startswith(f"products/{product_id}."):
+        raise AppError("잘못된 이미지 키입니다.")
+
+    old_key = product.image_object_key
+    product.image_object_key = object_key
+    db.commit()
+    if old_key and old_key != object_key:
+        storage.delete_object(old_key)
+
+    return schema.ProductImageResponse(image_url=storage.public_url(object_key))
+
+
+def delete_product_image(db: Session, user: User, product_id: int) -> None:
+    product = _get_owned_product(db, user, product_id)
+    if product.image_object_key is None:
+        raise NotFoundError("이미지를 찾을 수 없습니다.")
+
+    storage.delete_object(product.image_object_key)
+    product.image_object_key = None
     db.commit()
 
 

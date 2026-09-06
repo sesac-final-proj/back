@@ -28,6 +28,16 @@ def list_chat_rooms(
     return service.list_my_chat_rooms(db, user, page, size)
 
 
+@router.post("/{chat_room_id}/images/presign", response_model=schema.ImagePresignResponse)
+def presign_chat_image(
+    chat_room_id: int,
+    body: schema.ImagePresignRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.presign_chat_image(db, user, chat_room_id, body)
+
+
 @router.post(
     "/{chat_room_id}/messages",
     response_model=schema.MessageResponse,
