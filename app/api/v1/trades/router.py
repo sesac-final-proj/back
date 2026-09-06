@@ -24,12 +24,28 @@ def list_products(
     region_id: int | None = None,
     category: str | None = None,
     trade_status: schema.TradeStatus | None = None,
+    trade_type: schema.TradeType | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    sort: schema.TradeSort = "latest",
+    exclude_sold: bool = False,
     q: str | None = None,
     page: int = 1,
     size: int = 20,
     db: Session = Depends(get_db),
 ):
-    return service.list_products(db, region_id, category, trade_status, q, page, size)
+    return service.list_products(
+        db, region_id, category, trade_status, q, page, size,
+        trade_type=trade_type, price_min=price_min, price_max=price_max, sort=sort,
+        exclude_sold=exclude_sold,
+    )
+
+
+@router.get("/products/categories", response_model=schema.CategoryListResponse)
+def list_categories(db: Session = Depends(get_db)):
+    # /products/{product_id}보다 먼저 등록해야 "categories"가 product_id로
+    # 오인돼 매칭되지 않는다 (favorites/mine과 동일한 이유).
+    return service.list_categories(db)
 
 
 @router.get("/products/favorites", response_model=schema.ProductFavoritesResponse)

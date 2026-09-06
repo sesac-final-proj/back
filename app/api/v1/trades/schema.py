@@ -7,6 +7,11 @@ from app.core.pagination import Page
 
 TradeStatus = Literal["SALE", "RESERVED", "SOLD"]
 TradeType = Literal["SALE", "FREE"]
+TradeSort = Literal["latest", "price_asc", "price_desc"]
+
+
+class CategoryListResponse(BaseModel):
+    items: list[str]
 
 
 class ProductCreateRequest(BaseModel):
