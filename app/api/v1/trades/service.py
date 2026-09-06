@@ -11,6 +11,7 @@ from app.models.analysis import Analysis, AnalysisResult
 from app.models.chat import ChatRoom
 from app.models.favorite import ProductFavorite
 from app.models.product import Product
+from app.models.recently_viewed import RecentlyViewedProduct
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -247,6 +248,67 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
         for p, dong_name, chat_count, favorite_count in rows
     ]
     return schema.ProductFavoritesResponse(items=items, total=total)
+
+
+RECENTLY_VIEWED_LIMIT = 20
+
+
+def record_recently_viewed(db: Session, user: User, product_id: int) -> None:
+    if db.get(Product, product_id) is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+
+    updated = (
+        db.query(RecentlyViewedProduct)
+        .filter(RecentlyViewedProduct.user_id == user.id, RecentlyViewedProduct.product_id == product_id)
+        .update({RecentlyViewedProduct.viewed_at: func.now()})
+    )
+    if not updated:
+        db.add(RecentlyViewedProduct(user_id=user.id, product_id=product_id))
+    db.commit()
+
+    # 사용자당 최근 N개만 유지 — 그보다 오래된 건 정리(무한정 쌓이지 않게).
+    stale_ids = (
+        db.query(RecentlyViewedProduct.id)
+        .filter(RecentlyViewedProduct.user_id == user.id)
+        .order_by(RecentlyViewedProduct.viewed_at.desc())
+        .offset(RECENTLY_VIEWED_LIMIT)
+        .all()
+    )
+    if stale_ids:
+        db.query(RecentlyViewedProduct).filter(
+            RecentlyViewedProduct.id.in_([row[0] for row in stale_ids])
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+def list_recently_viewed(db: Session, user: User) -> schema.RecentlyViewedResponse:
+    chat_count_subq = (
+        select(ChatRoom.product_id, func.count(ChatRoom.id).label("chat_count"))
+        .group_by(ChatRoom.product_id)
+        .subquery()
+    )
+    favorite_count_subq = _favorite_count_subq()
+
+    query = (
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+        )
+        .join(RecentlyViewedProduct, RecentlyViewedProduct.product_id == Product.id)
+        .join(Region, Product.region_id == Region.id)
+        .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
+        .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        .filter(RecentlyViewedProduct.user_id == user.id)
+    )
+    total = query.count()
+    rows = query.order_by(RecentlyViewedProduct.viewed_at.desc()).limit(RECENTLY_VIEWED_LIMIT).all()
+    items = [
+        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
+        for p, dong_name, chat_count, favorite_count in rows
+    ]
+    return schema.RecentlyViewedResponse(items=items, total=total)
 
 
 def delete_product(db: Session, user: User, product_id: int) -> None:

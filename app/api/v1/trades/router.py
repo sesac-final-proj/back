@@ -56,6 +56,16 @@ def list_my_products(
     return service.list_products(db, None, None, None, None, page, size, created_by=user.id)
 
 
+@router.get("/products/recently-viewed", response_model=schema.RecentlyViewedResponse)
+def list_recently_viewed(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # /products/{product_id}보다 먼저 등록해야 "recently-viewed"가 product_id로
+    # 오인돼 매칭되지 않는다 (favorites/mine과 동일한 이유).
+    return service.list_recently_viewed(db, user)
+
+
 @router.get("/products/{product_id}", response_model=schema.ProductDetailResponse)
 def get_product(
     product_id: int,
@@ -63,6 +73,15 @@ def get_product(
     db: Session = Depends(get_db),
 ):
     return service.get_product_detail(db, product_id, user)
+
+
+@router.post("/products/{product_id}/view", status_code=status.HTTP_204_NO_CONTENT)
+def record_recently_viewed(
+    product_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.record_recently_viewed(db, user, product_id)
 
 
 @router.patch("/products/{product_id}/status", response_model=schema.ProductDetailResponse)
