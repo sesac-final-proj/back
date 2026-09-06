@@ -105,6 +105,7 @@ class FavoriteToggleResponse(BaseModel):
 
 
 ProductFavoritesResponse = Page[ProductListItem]
+RecentlyViewedResponse = Page[ProductListItem]
 
 
 class AnalysisRequest(BaseModel):
