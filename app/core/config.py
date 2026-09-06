@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     SEOUL_SUBWAY_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_SUBWAY_API_KEY", "SEOUL_SUBWAY_SERVICE", "SEOUL_SUBWAY_SERVIC"))
     SEOUL_CITYDATA_API_KEY: str = ""
 
+    OMNIROUTE_API_KEY: str = ""
+    OMNIROUTE_BASE_URL: str = "http://localhost:20128/v1"
+    OMNIROUTE_MODEL: str = "gpt 5.6"
+    OMNIROUTE_FALLBACK_MODEL: str = "claude5.0"
+
     @property
     def database_url(self) -> str:
         if not self.DB_USER or not self.DB_PASSWORD:

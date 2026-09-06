@@ -8,9 +8,31 @@ from app.api.v1.real_estate.service import _fetch_json, _geocode
 from app.core.config import settings
 
 DISTRICT_SERVICES = {
-    "송파구": "fcltOpenInfo_SP",
+    "강남구": "fcltOpenInfo_GN",
+    "강동구": "fcltOpenInfo_GD",
+    "강북구": "fcltOpenInfo_GB",
+    "강서구": "fcltOpenInfo_GS",
+    "관악구": "fcltOpenInfo_GA",
+    "광진구": "fcltOpenInfo_GJ",
+    "구로구": "fcltOpenInfo_GR",
+    "금천구": "fcltOpenInfo_GC",
     "노원구": "fcltOpenInfo_NW",
+    "도봉구": "fcltOpenInfo_DB",
+    "동대문구": "fcltOpenInfo_DD",
+    "동작구": "fcltOpenInfo_DJ",
+    "마포구": "fcltOpenInfo_MP",
+    "서대문구": "fcltOpenInfo_SM",
+    "서초구": "fcltOpenInfo_SC",
+    "성동구": "fcltOpenInfo_SD",
+    "성북구": "fcltOpenInfo_SB",
+    "송파구": "fcltOpenInfo_SP",
+    "양천구": "fcltOpenInfo_YC",
     "영등포구": "fcltOpenInfo_YD",
+    "용산구": "fcltOpenInfo_YS",
+    "은평구": "fcltOpenInfo_EP",
+    "종로구": "fcltOpenInfo_JN",
+    "중구": "fcltOpenInfo_JG",
+    "중랑구": "fcltOpenInfo_JR",
 }
 
 
