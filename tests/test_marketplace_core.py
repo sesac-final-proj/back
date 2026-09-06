@@ -8,7 +8,12 @@ CRUD만 수행).
 from fastapi import HTTPException
 
 from app.api.v1.chats import service as chat_service
-from app.api.v1.chats.schema import ChatRoomCreateRequest, ChatRoomStatusUpdateRequest, MessageCreateRequest
+from app.api.v1.chats.schema import (
+    ChatRoomCreateRequest,
+    ChatRoomStatusUpdateRequest,
+    ImagePresignRequest,
+    MessageCreateRequest,
+)
 from app.api.v1.trades import service as trade_service
 from app.api.v1.trades.schema import ProductCreateRequest, ProductStatusUpdateRequest, ProductUpdateRequest
 from app.core.db import SessionLocal
@@ -203,6 +208,36 @@ def main():
         reply = chat_service.send_message(db, owner, room.id, MessageCreateRequest(content="네 가능해요"))
         assert reply.content == "네 가능해요"
 
+        # 채팅 이미지: presign은 chat/{room_id}/ 폴더로 키를 만들고, 등록된 메시지는
+        # 그 키로 조립한 image_url을 돌려준다.
+        try:
+            chat_service.presign_chat_image(
+                db, stranger, room.id, ImagePresignRequest(filename="x.jpg", content_type="image/jpeg")
+            )
+            raise AssertionError("참여자 아닌데 이미지 presign 되면 안 된다")
+        except PermissionDeniedError:
+            pass
+
+        presign = chat_service.presign_chat_image(
+            db, other, room.id, ImagePresignRequest(filename="x.jpg", content_type="image/jpeg")
+        )
+        assert presign.object_key.startswith(f"chat/{room.id}/")
+
+        try:
+            chat_service.send_message(
+                db, other, room.id, MessageCreateRequest(message_type="IMAGE", image_object_key="chat/999999/x.jpg")
+            )
+            raise AssertionError("다른 방 폴더의 이미지 키는 막혀야 한다")
+        except AppError:
+            pass
+
+        img_msg = chat_service.send_message(
+            db, other, room.id, MessageCreateRequest(message_type="IMAGE", image_object_key=presign.object_key)
+        )
+        assert img_msg.message_type == "IMAGE"
+        assert img_msg.image_url == presign.image_url
+        assert db.get(ChatRoom, room.id).last_message == "사진을 보냈습니다"
+
         try:
             chat_service.list_messages(db, stranger, room.id, page=1, size=20)
             raise AssertionError("참여자 아닌데 메시지 조회하면 403이어야 한다")
@@ -216,10 +251,11 @@ def main():
             pass
 
         msgs = chat_service.list_messages(db, other, room.id, page=1, size=20)
-        assert msgs.total == 2 and msgs.items[0].content == "아직 판매 중인가요?"
+        assert msgs.total == 3 and msgs.items[0].content == "아직 판매 중인가요?"
+        assert msgs.items[2].message_type == "IMAGE" and msgs.items[2].content is None
 
         room_after = db.get(ChatRoom, room.id)
-        assert room_after.last_message == "네 가능해요"
+        assert room_after.last_message == "사진을 보냈습니다"
 
         # 채팅 중 거래상태 변경 — 판매자만 가능
         try:

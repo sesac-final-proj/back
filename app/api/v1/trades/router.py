@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.trades import schema, service
 from app.core.db import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/trades", tags=["중고거래"])
@@ -57,8 +57,12 @@ def list_my_products(
 
 
 @router.get("/products/{product_id}", response_model=schema.ProductDetailResponse)
-def get_product(product_id: int, db: Session = Depends(get_db)):
-    return service.get_product_detail(db, product_id)
+def get_product(
+    product_id: int,
+    user: User | None = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    return service.get_product_detail(db, product_id, user)
 
 
 @router.patch("/products/{product_id}/status", response_model=schema.ProductDetailResponse)
@@ -69,7 +73,7 @@ def update_product_status(
     db: Session = Depends(get_db),
 ):
     service.update_product_status(db, user, product_id, body.trade_status)
-    return service.get_product_detail(db, product_id)
+    return service.get_product_detail(db, product_id, user)
 
 
 @router.patch("/products/{product_id}", response_model=schema.ProductDetailResponse)
@@ -80,7 +84,7 @@ def update_product(
     db: Session = Depends(get_db),
 ):
     service.update_product(db, user, product_id, body)
-    return service.get_product_detail(db, product_id)
+    return service.get_product_detail(db, product_id, user)
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -127,26 +131,25 @@ def presign_product_image(
 
 @router.post(
     "/products/{product_id}/images",
-    response_model=schema.ProductImagesResponse,
+    response_model=schema.ProductImageResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def register_product_images(
+def register_product_image(
     product_id: int,
     body: schema.ImageRegisterRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return service.register_product_images(db, user, product_id, body.object_keys)
+    return service.register_product_image(db, user, product_id, body.object_key)
 
 
-@router.delete("/products/{product_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/products/{product_id}/images", status_code=status.HTTP_204_NO_CONTENT)
 def delete_product_image(
     product_id: int,
-    image_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    service.delete_product_image(db, user, product_id, image_id)
+    service.delete_product_image(db, user, product_id)
 
 
 @router.post("/analyses", response_model=schema.AnalysisCreated, status_code=status.HTTP_201_CREATED)

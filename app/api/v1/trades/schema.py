@@ -50,14 +50,6 @@ class ProductListItem(BaseModel):
 ProductListResponse = Page[ProductListItem]
 
 
-class ProductImageItem(BaseModel):
-    model_config = {"from_attributes": True}
-
-    id: int
-    image_url: str
-    sort_order: int
-
-
 class ProductDetailResponse(ProductListItem):
     category: str
     detail_category: str | None
@@ -66,7 +58,7 @@ class ProductDetailResponse(ProductListItem):
     trade_place: str | None
     seller_nickname: str | None
     seller_manner_temp: float | None
-    images: list[ProductImageItem] = []
+    is_mine: bool = False
 
 
 class ImagePresignRequest(BaseModel):
@@ -81,11 +73,11 @@ class ImagePresignResponse(BaseModel):
 
 
 class ImageRegisterRequest(BaseModel):
-    object_keys: list[str]
+    object_key: str
 
 
-class ProductImagesResponse(BaseModel):
-    images: list[ProductImageItem]
+class ProductImageResponse(BaseModel):
+    image_url: str
 
 
 class ProductStatusUpdateRequest(BaseModel):

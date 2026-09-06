@@ -32,11 +32,21 @@ def _client():
     )
 
 
-def build_object_key(product_id: int, content_type: str) -> str:
+def _resolve_ext(content_type: str) -> str:
     ext = ALLOWED_CONTENT_TYPES.get(content_type)
     if ext is None:
         raise ValueError(f"지원하지 않는 이미지 형식입니다: {content_type}")
-    return f"products/{product_id}/{uuid.uuid4().hex}.{ext}"
+    return ext
+
+
+def build_object_key(folder: str, entity_id: int, content_type: str) -> str:
+    """folder는 버킷 최상위 구분 ("chat") — 그 아래 entity_id별로 묶는다."""
+    return f"{folder}/{entity_id}/{uuid.uuid4().hex}.{_resolve_ext(content_type)}"
+
+
+def build_product_image_key(product_id: int, content_type: str) -> str:
+    """상품 이미지는 1장만 유지 — 파일명을 product_id로 고정해 재업로드 시 덮어쓴다."""
+    return f"products/{product_id}.{_resolve_ext(content_type)}"
 
 
 def public_url(object_key: str) -> str:
