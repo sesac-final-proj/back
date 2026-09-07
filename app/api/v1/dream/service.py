@@ -8,9 +8,31 @@ from app.api.v1.real_estate.service import _fetch_json, _geocode
 from app.core.config import settings
 
 DISTRICT_SERVICES = {
-    "송파구": "fcltOpenInfo_SP",
+    "강남구": "fcltOpenInfo_GN",
+    "강동구": "fcltOpenInfo_GD",
+    "강북구": "fcltOpenInfo_GB",
+    "강서구": "fcltOpenInfo_GS",
+    "관악구": "fcltOpenInfo_GA",
+    "광진구": "fcltOpenInfo_GJ",
+    "구로구": "fcltOpenInfo_GR",
+    "금천구": "fcltOpenInfo_GC",
     "노원구": "fcltOpenInfo_NW",
+    "도봉구": "fcltOpenInfo_DB",
+    "동대문구": "fcltOpenInfo_DD",
+    "동작구": "fcltOpenInfo_DJ",
+    "마포구": "fcltOpenInfo_MP",
+    "서대문구": "fcltOpenInfo_SM",
+    "서초구": "fcltOpenInfo_SC",
+    "성동구": "fcltOpenInfo_SD",
+    "성북구": "fcltOpenInfo_SB",
+    "송파구": "fcltOpenInfo_SP",
+    "양천구": "fcltOpenInfo_YC",
     "영등포구": "fcltOpenInfo_YD",
+    "용산구": "fcltOpenInfo_YS",
+    "은평구": "fcltOpenInfo_EP",
+    "종로구": "fcltOpenInfo_JN",
+    "중구": "fcltOpenInfo_JG",
+    "중랑구": "fcltOpenInfo_JR",
 }
 
 
@@ -49,6 +71,19 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
         address = str(row.get("FCLT_ADDR") or "").strip()
         coordinate = _geocode(address)
         identity = str(row.get("FCLT_CD") or f"{name}|{address}")
+        homepage_url = next(
+            (
+                str(row.get(key)).strip()
+                for key in ("FCLT_HMPG", "FCLT_HMPG_URL", "FCLT_HOME_URL", "HOMEPAGE")
+                if row.get(key)
+            ),
+            None,
+        )
+        if not homepage_url and row.get("FCLT_CD"):
+            homepage_url = (
+                "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/"
+                f"BD_selectFcltyInfoManage.do?q_fcltyId={quote(str(row['FCLT_CD']), safe='')}&q_fclty=1003"
+            )
         items.append(
             schema.FacilityItem(
                 id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
@@ -57,6 +92,7 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                 facility_type=str(row.get("FCLT_KIND_NM") or "아동복지시설").strip(),
                 address=address,
                 phone=str(row.get("FCLT_TEL_NO") or "").strip() or None,
+                homepage_url=homepage_url,
                 lat=coordinate[0] if coordinate else None,
                 lng=coordinate[1] if coordinate else None,
             )
