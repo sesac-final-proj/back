@@ -20,12 +20,14 @@ def create_chat_room(
 
 @router.get("", response_model=schema.ChatRoomListResponse)
 def list_chat_rooms(
+    product_id: int | None = None,
     page: int = 1,
     size: int = 20,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return service.list_my_chat_rooms(db, user, page, size)
+    # product_id를 주면 판매자가 자기 상품에 걸린 채팅방들을 N:1로 조회하는 용도.
+    return service.list_my_chat_rooms(db, user, page, size, product_id)
 
 
 @router.post("/{chat_room_id}/images/presign", response_model=schema.ImagePresignResponse)

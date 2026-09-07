@@ -65,6 +65,7 @@ def main():
 
     product_id = None
     room_id = None
+    room_from_stranger_id = None
     try:
         # 활동동네 없는 유저는 상품 등록 불가
         try:
@@ -171,6 +172,26 @@ def main():
         rooms_page_owner = chat_service.list_my_chat_rooms(db, owner, page=1, size=20)
         assert rooms_page_owner.total == 1  # 판매자(owner)도 자동으로 참여자 등록됨
         assert rooms_page_owner.items[0].is_seller is True
+
+        # 채팅방 응답에 상대방 정보/물품 요약이 같이 실려온다 — 관점(구매자/판매자)에 따라
+        # counterpart가 반대쪽으로 뒤집힌다.
+        assert rooms_page.items[0].counterpart_nickname == "owner"
+        assert rooms_page_owner.items[0].counterpart_nickname == "other"
+        assert rooms_page_owner.items[0].product_price == product.desired_price
+        assert rooms_page_owner.items[0].product_trade_status == "RESERVED"
+
+        # 판매자 관점 "채팅하기" = 자기 상품에 걸린 채팅방 N:1 리스트(product_id 필터).
+        # 다른 구매자(stranger)가 같은 상품에 새로 채팅을 걸면 owner 쪽엔 방이 2개 보여야 한다.
+        room_from_stranger = chat_service.create_chat_room(
+            db, stranger, ChatRoomCreateRequest(type="TRADE", product_id=product.id)
+        )
+        room_from_stranger_id = room_from_stranger.id
+        by_product = chat_service.list_my_chat_rooms(db, owner, page=1, size=20, product_id=product.id)
+        assert by_product.total == 2
+        assert {item.id for item in by_product.items} == {room_id, room_from_stranger.id}
+        assert all(item.is_seller for item in by_product.items)
+        # 다른 상품 id로 걸러도 원래처럼 전체 목록에는 영향 없어야 한다.
+        assert chat_service.list_my_chat_rooms(db, owner, page=1, size=20, product_id=-1).total == 0
 
         # 찜
         fav = trade_service.add_favorite(db, other, product.id)
@@ -332,6 +353,10 @@ def main():
             db.query(ChatMessage).filter_by(chat_room_id=room_id).delete()
             db.query(ChatRoomParticipant).filter_by(chat_room_id=room_id).delete()
             db.query(ChatRoom).filter_by(id=room_id).delete()
+        if room_from_stranger_id is not None:
+            db.query(ChatMessage).filter_by(chat_room_id=room_from_stranger_id).delete()
+            db.query(ChatRoomParticipant).filter_by(chat_room_id=room_from_stranger_id).delete()
+            db.query(ChatRoom).filter_by(id=room_from_stranger_id).delete()
         if product_id is not None:
             db.query(ProductFavorite).filter_by(product_id=product_id).delete()
             db.query(Product).filter_by(id=product_id).delete()
