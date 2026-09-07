@@ -28,6 +28,16 @@ def list_chat_rooms(
     return service.list_my_chat_rooms(db, user, page, size)
 
 
+@router.post("/{chat_room_id}/images/presign", response_model=schema.ImagePresignResponse)
+def presign_chat_image(
+    chat_room_id: int,
+    body: schema.ImagePresignRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.presign_chat_image(db, user, chat_room_id, body)
+
+
 @router.post(
     "/{chat_room_id}/messages",
     response_model=schema.MessageResponse,
@@ -51,3 +61,22 @@ def list_messages(
     db: Session = Depends(get_db),
 ):
     return service.list_messages(db, user, chat_room_id, page, size)
+
+
+@router.delete("/{chat_room_id}", status_code=status.HTTP_204_NO_CONTENT)
+def leave_chat_room(
+    chat_room_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.leave_chat_room(db, user, chat_room_id)
+
+
+@router.patch("/{chat_room_id}/status", response_model=schema.MessageResponse)
+def update_chat_trade_status(
+    chat_room_id: int,
+    body: schema.ChatRoomStatusUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.update_trade_status(db, user, chat_room_id, body)

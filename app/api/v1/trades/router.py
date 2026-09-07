@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.trades import schema, service
 from app.core.db import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/trades", tags=["중고거래"])
@@ -24,12 +24,28 @@ def list_products(
     region_id: int | None = None,
     category: str | None = None,
     trade_status: schema.TradeStatus | None = None,
+    trade_type: schema.TradeType | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    sort: schema.TradeSort = "latest",
+    exclude_sold: bool = False,
     q: str | None = None,
     page: int = 1,
     size: int = 20,
     db: Session = Depends(get_db),
 ):
-    return service.list_products(db, region_id, category, trade_status, q, page, size)
+    return service.list_products(
+        db, region_id, category, trade_status, q, page, size,
+        trade_type=trade_type, price_min=price_min, price_max=price_max, sort=sort,
+        exclude_sold=exclude_sold,
+    )
+
+
+@router.get("/products/categories", response_model=schema.CategoryListResponse)
+def list_categories(db: Session = Depends(get_db)):
+    # /products/{product_id}보다 먼저 등록해야 "categories"가 product_id로
+    # 오인돼 매칭되지 않는다 (favorites/mine과 동일한 이유).
+    return service.list_categories(db)
 
 
 @router.get("/products/favorites", response_model=schema.ProductFavoritesResponse)
@@ -56,9 +72,32 @@ def list_my_products(
     return service.list_products(db, None, None, None, None, page, size, created_by=user.id)
 
 
+@router.get("/products/recently-viewed", response_model=schema.RecentlyViewedResponse)
+def list_recently_viewed(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # /products/{product_id}보다 먼저 등록해야 "recently-viewed"가 product_id로
+    # 오인돼 매칭되지 않는다 (favorites/mine과 동일한 이유).
+    return service.list_recently_viewed(db, user)
+
+
 @router.get("/products/{product_id}", response_model=schema.ProductDetailResponse)
-def get_product(product_id: int, db: Session = Depends(get_db)):
-    return service.get_product_detail(db, product_id)
+def get_product(
+    product_id: int,
+    user: User | None = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    return service.get_product_detail(db, product_id, user)
+
+
+@router.post("/products/{product_id}/view", status_code=status.HTTP_204_NO_CONTENT)
+def record_recently_viewed(
+    product_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.record_recently_viewed(db, user, product_id)
 
 
 @router.patch("/products/{product_id}/status", response_model=schema.ProductDetailResponse)
@@ -69,7 +108,7 @@ def update_product_status(
     db: Session = Depends(get_db),
 ):
     service.update_product_status(db, user, product_id, body.trade_status)
-    return service.get_product_detail(db, product_id)
+    return service.get_product_detail(db, product_id, user)
 
 
 @router.patch("/products/{product_id}", response_model=schema.ProductDetailResponse)
@@ -80,7 +119,7 @@ def update_product(
     db: Session = Depends(get_db),
 ):
     service.update_product(db, user, product_id, body)
-    return service.get_product_detail(db, product_id)
+    return service.get_product_detail(db, product_id, user)
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -108,3 +147,86 @@ def remove_favorite(
     db: Session = Depends(get_db),
 ):
     return service.remove_favorite(db, user, product_id)
+
+
+@router.post("/products/{product_id}/images/presign", response_model=schema.ImagePresignResponse)
+def presign_product_image(
+    product_id: int,
+    body: schema.ImagePresignRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """업로드 전에 호출: NCP에 직접 PUT할 presigned URL을 받는다.
+
+    클라이언트는 이 upload_url로 이미지를 PUT한 뒤, object_key를
+    POST /products/{id}/images 에 보내 등록을 마무리한다.
+    """
+    return service.presign_product_image(db, user, product_id, body)
+
+
+@router.post(
+    "/products/{product_id}/images",
+    response_model=schema.ProductImageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_product_image(
+    product_id: int,
+    body: schema.ImageRegisterRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.register_product_image(db, user, product_id, body.object_key)
+
+
+@router.delete("/products/{product_id}/images", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product_image(
+    product_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.delete_product_image(db, user, product_id)
+
+
+@router.post("/analyses", response_model=schema.AnalysisCreated, status_code=status.HTTP_201_CREATED)
+def create_analysis(
+    body: schema.AnalysisRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.create_analysis(db, user, body)
+
+
+@router.get("/analyses/{analysis_id}/similar", response_model=list[schema.SimilarTransactionItem])
+def get_similar_transactions(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_similar_transactions(db, user, analysis_id)
+
+
+@router.get("/analyses/{analysis_id}/price-range", response_model=schema.PriceRangeResponse)
+def get_price_range(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_price_range(db, user, analysis_id)
+
+
+@router.get("/analyses/{analysis_id}/frequency", response_model=schema.FrequencyResponse)
+def get_frequency(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_frequency(db, user, analysis_id)
+
+
+@router.get("/analyses/{analysis_id}/evidence", response_model=schema.EvidenceResponse)
+def get_evidence(
+    analysis_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_evidence(db, user, analysis_id)

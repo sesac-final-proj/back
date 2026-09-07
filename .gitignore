@@ -13,6 +13,7 @@ __pycache__/
 *.sqlite3-wal
 *.sqlite3-shm
 nuri/*.log
+*.log
 local_dev.db
 app/api/v1/nicknames/resources/forbidden_words.json
 app/api/v1/nicknames/resources/forbidden_words.local.json

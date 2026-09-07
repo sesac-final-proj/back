@@ -8,7 +8,12 @@ CRUD만 수행).
 from fastapi import HTTPException
 
 from app.api.v1.chats import service as chat_service
-from app.api.v1.chats.schema import ChatRoomCreateRequest, MessageCreateRequest
+from app.api.v1.chats.schema import (
+    ChatRoomCreateRequest,
+    ChatRoomStatusUpdateRequest,
+    ImagePresignRequest,
+    MessageCreateRequest,
+)
 from app.api.v1.trades import service as trade_service
 from app.api.v1.trades.schema import ProductCreateRequest, ProductStatusUpdateRequest, ProductUpdateRequest
 from app.core.db import SessionLocal
@@ -42,11 +47,18 @@ def main():
         nickname="other",
         role=UserRole.USER,
     )
-    db.add_all([region, owner, other])
+    stranger = User(
+        email="__marketplace_selfcheck_stranger__@example.com",
+        password_hash=hash_password("x"),
+        nickname="stranger",
+        role=UserRole.USER,
+    )
+    db.add_all([region, owner, other, stranger])
     db.commit()
     db.refresh(region)
     db.refresh(owner)
     db.refresh(other)
+    db.refresh(stranger)
     owner.region_id = region.id
     db.commit()
     db.refresh(owner)
@@ -97,16 +109,19 @@ def main():
             pass
 
         trade_service.update_product(
-            db, owner, product.id, ProductUpdateRequest(title="원목 사이드 테이블(가격내림)", desired_price=20000)
+            db, owner, product.id, ProductUpdateRequest(title="원목 셀프체크XZQ99 테이블(가격내림)", desired_price=20000)
         )
         updated = trade_service.get_product_detail(db, product.id)
-        assert updated.title == "원목 사이드 테이블(가격내림)"
+        assert updated.title == "원목 셀프체크XZQ99 테이블(가격내림)"
         assert updated.price == 20000
         assert updated.category == "가구"  # 안 건드린 필드는 유지
 
-        found = trade_service.list_products(db, None, None, None, "사이드", page=1, size=20)
+        # 실제 크롤링 데이터가 products에 같이 들어있을 수 있어(scripts/seed_products.py) 이중으로
+        # 방어한다: region_id로 자가검증 전용 지역에 스코프를 좁히고(실데이터는 이 region_id를
+        # 절대 못 가짐), 검색어도 실데이터와 안 겹칠 고유 토큰을 쓴다.
+        found = trade_service.list_products(db, region.id, None, None, "셀프체크XZQ99", page=1, size=20)
         assert found.total == 1
-        not_found = trade_service.list_products(db, None, None, None, "냉장고", page=1, size=20)
+        not_found = trade_service.list_products(db, region.id, None, None, "냉장고", page=1, size=20)
         assert not_found.total == 0
 
         # 내 상품 목록
@@ -128,19 +143,34 @@ def main():
         except AppError:
             pass
 
+        try:
+            chat_service.create_chat_room(db, owner, ChatRoomCreateRequest(type="TRADE", product_id=product.id))
+            raise AssertionError("본인 상품에 채팅 걸면 AppError여야 한다")
+        except AppError:
+            pass
+
         room = chat_service.create_chat_room(
             db, other, ChatRoomCreateRequest(type="TRADE", product_id=product.id)
         )
         room_id = room.id
         assert room.title == product.title
         assert room.unread_count == 0
+        assert room.is_seller is False
+
+        # 같은 상품에 같은 사람이 다시 채팅 걸면 새 방이 아니라 기존 방을 재사용
+        room_again = chat_service.create_chat_room(
+            db, other, ChatRoomCreateRequest(type="TRADE", product_id=product.id)
+        )
+        assert room_again.id == room_id
 
         rooms_page = chat_service.list_my_chat_rooms(db, other, page=1, size=20)
         assert rooms_page.total == 1
         assert rooms_page.items[0].id == room.id
+        assert rooms_page.items[0].is_seller is False
 
         rooms_page_owner = chat_service.list_my_chat_rooms(db, owner, page=1, size=20)
-        assert rooms_page_owner.total == 0  # 개설자(other)만 참여자로 등록됨
+        assert rooms_page_owner.total == 1  # 판매자(owner)도 자동으로 참여자 등록됨
+        assert rooms_page_owner.items[0].is_seller is True
 
         # 찜
         fav = trade_service.add_favorite(db, other, product.id)
@@ -164,7 +194,7 @@ def main():
 
         # 채팅 메시지
         try:
-            chat_service.send_message(db, owner, room.id, MessageCreateRequest(content="야"))
+            chat_service.send_message(db, stranger, room.id, MessageCreateRequest(content="야"))
             raise AssertionError("참여자 아닌데 메시지 보내면 403이어야 한다")
         except PermissionDeniedError:
             pass
@@ -174,8 +204,42 @@ def main():
         )
         assert msg.content == "아직 판매 중인가요?"
 
+        # 판매자도 참여자이므로 답장이 가능해야 한다 (버그 수정 확인 포인트)
+        reply = chat_service.send_message(db, owner, room.id, MessageCreateRequest(content="네 가능해요"))
+        assert reply.content == "네 가능해요"
+
+        # 채팅 이미지: presign은 chat/{room_id}/ 폴더로 키를 만들고, 등록된 메시지는
+        # 그 키로 조립한 image_url을 돌려준다.
         try:
-            chat_service.list_messages(db, owner, room.id, page=1, size=20)
+            chat_service.presign_chat_image(
+                db, stranger, room.id, ImagePresignRequest(filename="x.jpg", content_type="image/jpeg")
+            )
+            raise AssertionError("참여자 아닌데 이미지 presign 되면 안 된다")
+        except PermissionDeniedError:
+            pass
+
+        presign = chat_service.presign_chat_image(
+            db, other, room.id, ImagePresignRequest(filename="x.jpg", content_type="image/jpeg")
+        )
+        assert presign.object_key.startswith(f"chat/{room.id}/")
+
+        try:
+            chat_service.send_message(
+                db, other, room.id, MessageCreateRequest(message_type="IMAGE", image_object_key="chat/999999/x.jpg")
+            )
+            raise AssertionError("다른 방 폴더의 이미지 키는 막혀야 한다")
+        except AppError:
+            pass
+
+        img_msg = chat_service.send_message(
+            db, other, room.id, MessageCreateRequest(message_type="IMAGE", image_object_key=presign.object_key)
+        )
+        assert img_msg.message_type == "IMAGE"
+        assert img_msg.image_url == presign.image_url
+        assert db.get(ChatRoom, room.id).last_message == "사진을 보냈습니다"
+
+        try:
+            chat_service.list_messages(db, stranger, room.id, page=1, size=20)
             raise AssertionError("참여자 아닌데 메시지 조회하면 403이어야 한다")
         except PermissionDeniedError:
             pass
@@ -187,10 +251,53 @@ def main():
             pass
 
         msgs = chat_service.list_messages(db, other, room.id, page=1, size=20)
-        assert msgs.total == 1 and msgs.items[0].content == "아직 판매 중인가요?"
+        assert msgs.total == 3 and msgs.items[0].content == "아직 판매 중인가요?"
+        assert msgs.items[2].message_type == "IMAGE" and msgs.items[2].content is None
 
         room_after = db.get(ChatRoom, room.id)
-        assert room_after.last_message == "아직 판매 중인가요?"
+        assert room_after.last_message == "사진을 보냈습니다"
+
+        # 채팅 중 거래상태 변경 — 판매자만 가능
+        try:
+            chat_service.update_trade_status(db, other, room.id, ChatRoomStatusUpdateRequest(trade_status="RESERVED"))
+            raise AssertionError("구매자가 상태변경 시도하면 403이어야 한다")
+        except PermissionDeniedError:
+            pass
+
+        reserved_msg = chat_service.update_trade_status(
+            db, owner, room.id, ChatRoomStatusUpdateRequest(trade_status="RESERVED")
+        )
+        assert reserved_msg.content == "예약중으로 변경했어요"
+        assert trade_service.get_product_detail(db, product.id).trade_status == "RESERVED"
+
+        sold_msg = chat_service.update_trade_status(
+            db, owner, room.id, ChatRoomStatusUpdateRequest(trade_status="SOLD")
+        )
+        assert sold_msg.content == "거래가 완료되었어요"
+        assert trade_service.get_product_detail(db, product.id).trade_status == "SOLD"
+
+        # 3단계 상태(판매중/예약중/거래완료)를 한 곳에서 오갈 수 있어야 한다 — 되돌리기 확인
+        sale_msg = chat_service.update_trade_status(
+            db, owner, room.id, ChatRoomStatusUpdateRequest(trade_status="SALE")
+        )
+        assert sale_msg.content == "판매중으로 변경했어요"
+        assert trade_service.get_product_detail(db, product.id).trade_status == "SALE"
+
+        # 채팅방 나가기
+        try:
+            chat_service.leave_chat_room(db, stranger, room.id)
+            raise AssertionError("참여자 아닌데 나가면 403이어야 한다")
+        except PermissionDeniedError:
+            pass
+
+        chat_service.leave_chat_room(db, other, room.id)
+        assert chat_service.list_my_chat_rooms(db, other, page=1, size=20).total == 0
+
+        try:
+            chat_service.send_message(db, other, room.id, MessageCreateRequest(content="나갔는데도 보내짐?"))
+            raise AssertionError("나간 뒤엔 메시지 전송이 막혀야 한다")
+        except PermissionDeniedError:
+            pass
 
         # 삭제
         try:
@@ -230,6 +337,7 @@ def main():
             db.query(Product).filter_by(id=product_id).delete()
         db.delete(owner)
         db.delete(other)
+        db.delete(stranger)
         db.delete(region)
         db.commit()
         db.close()
