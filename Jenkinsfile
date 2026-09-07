@@ -25,15 +25,19 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                // 실서버 .env를 Jenkins Secret file 크레덴셜(ongaji-back-env)로 등록해서 사용
+                // 실서버 env는 Jenkins Secret file 크레덴셜(ongaji-back-env)을 .env.prod로
+                // 받아서 컨테이너에 먹인다 — 로컬 개발(.env)과 이름을 맞춰서 지금 도는 게
+                // 운영용 env인지 한눈에 보이게 한다(app/core/config.py의 APP_ENV별
+                // .env.{APP_ENV} 조회 규칙과도 동일한 이름).
                 withCredentials([file(credentialsId: 'ongaji-back-env', variable: 'ENV_FILE')]) {
                     sh '''
+                        cp ${ENV_FILE} .env.prod
                         docker stop ${CONTAINER_NAME} || true
                         docker rm ${CONTAINER_NAME} || true
                         docker run -d \
                             --name ${CONTAINER_NAME} \
                             -p 8000:8000 \
-                            --env-file ${ENV_FILE} \
+                            --env-file .env.prod \
                             --restart unless-stopped \
                             ${IMAGE_NAME}:latest
                     '''

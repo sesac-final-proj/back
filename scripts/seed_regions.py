@@ -65,6 +65,14 @@ SAMPLE_REGIONS += [
     {"dong_code": f"TMP-SPA-{name}", "dong_name": name, **_SPA_CENTER} for name in _SPA_LEGACY_DONGS
 ]
 
+# data/daangn_노원구.csv "지역" 컬럼에도 송파구와 같은 옛 통합동 표기가 섞여 있다
+# (예: "공릉동"이 "공릉1동/공릉2동"과 별도로 등장). "상계동"은 위 TMP-NW-001로
+# 이미 있어 제외.
+_NW_LEGACY_DONGS = ["공릉동", "월계동", "중계동", "하계동"]
+SAMPLE_REGIONS += [
+    {"dong_code": f"TMP-NW-{name}", "dong_name": name, **_NW_CENTER} for name in _NW_LEGACY_DONGS
+]
+
 
 def seed():
     db = SessionLocal()

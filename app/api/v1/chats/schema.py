@@ -20,8 +20,16 @@ class ChatRoomCreateRequest(BaseModel):
         return self
 
 
+ChatTradeStatus = Literal["SALE", "RESERVED", "SOLD"]
+
+
 class ChatRoomResponse(BaseModel):
-    """carrot/mock_contract.py의 ChatRoom과 필드명을 맞춘다 (id는 int)."""
+    """carrot/mock_contract.py의 ChatRoom과 필드명을 맞춘다 (id는 int).
+
+    counterpart_*/product_* 필드는 채팅방 목록/헤더 UI(상대방 닉네임·동네,
+    물품 사진·거래상태·가격)를 이 응답 하나로 그릴 수 있게 얹었다 — 프론트가
+    상세 API를 따로 또 부르지 않아도 되게.
+    """
 
     model_config = {"from_attributes": True}
 
@@ -34,12 +42,17 @@ class ChatRoomResponse(BaseModel):
     unread_count: int
     verified: bool
     is_seller: bool
+    counterpart_nickname: str | None = None
+    # 실제 가입 유저의 매너온도 시스템은 아직 없음(Product.seller_manner_temp는 크롤링
+    # 원본 스냅샷이라 채팅 상대와 무관) — 항상 None, 도입되면 여기서 채워주면 됨.
+    counterpart_manner_temp: float | None = None
+    counterpart_neighborhood_name: str | None = None
+    product_thumbnail_url: str | None = None
+    product_price: int | None = None
+    product_trade_status: ChatTradeStatus | None = None
 
 
 ChatRoomListResponse = Page[ChatRoomResponse]
-
-
-ChatTradeStatus = Literal["SALE", "RESERVED", "SOLD"]
 
 
 class ChatRoomStatusUpdateRequest(BaseModel):

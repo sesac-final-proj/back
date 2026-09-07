@@ -16,6 +16,10 @@ from app.api.v1.auth.schema import (
     ProfileUpdateRequest,
     RegionUpdateRequest,
     SignupRequest,
+    UserRegionCreateRequest,
+    UserRegionItem,
+    UserRegionListResponse,
+    UserRegionUpdateRequest,
 )
 from app.core.config import settings
 from app.core.redis_client import is_refresh_token_valid, revoke_refresh_token, save_refresh_token
@@ -28,6 +32,12 @@ from app.core.security import (
 )
 from app.models.region import Region
 from app.models.user import SocialAccount, User, UserRole
+from app.models.user_region import UserRegion
+
+# PRD MVP는 "영등포-노원-송파 활동동네 및 거래반경 설정"까지만 요구 — 다건 등록은
+# 당근 실제 앱처럼 최대 2개로 제한한다(docs/issue/11-multi-region.md). 정책이
+# 바뀌면 이 값만 조정.
+MAX_USER_REGIONS = 2
 
 
 def _unauthorized(message: str = "인증 정보가 유효하지 않습니다.") -> HTTPException:
@@ -107,19 +117,135 @@ def logout(db: Session, refresh_token: str) -> dict:
     return {"message": "로그아웃되었습니다."}
 
 
-def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User:
+def _resolve_region(db: Session, region_id: int | None, dong_code: str | None) -> Region:
     region = None
-    if payload.region_id is not None:
-        region = db.get(Region, payload.region_id)
-    elif payload.dong_code is not None:
-        region = db.scalar(select(Region).where(Region.dong_code == payload.dong_code))
+    if region_id is not None:
+        region = db.get(Region, region_id)
+    elif dong_code is not None:
+        region = db.scalar(select(Region).where(Region.dong_code == dong_code))
 
     if region is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="지역을 찾을 수 없습니다.")
+    return region
 
-    user.region_id = region.id
-    user.radius_m = payload.radius_m
+
+def _sync_primary_cache(user: User, user_region: UserRegion) -> None:
+    user.region_id = user_region.region_id
+    user.radius_m = user_region.radius_m
+
+
+def _to_user_region_item(user_region: UserRegion, region: Region) -> UserRegionItem:
+    return UserRegionItem(
+        region_id=region.id,
+        dong_name=region.dong_name,
+        gu_name=region.gu_name,
+        radius_m=user_region.radius_m,
+        is_primary=user_region.is_primary,
+    )
+
+
+def _get_owned_user_region(db: Session, user: User, region_id: int) -> UserRegion:
+    user_region = (
+        db.query(UserRegion).filter(UserRegion.user_id == user.id, UserRegion.region_id == region_id).first()
+    )
+    if user_region is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="등록되지 않은 동네입니다.")
+    return user_region
+
+
+def _add_user_region(db: Session, user: User, region: Region, radius_m: int, want_primary: bool) -> UserRegionItem:
+    existing_count = db.query(UserRegion).filter(UserRegion.user_id == user.id).count()
+    if existing_count >= MAX_USER_REGIONS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"이미 동네를 {MAX_USER_REGIONS}개 등록했어요. 하나를 삭제한 뒤 추가해주세요.",
+        )
+    if db.query(UserRegion).filter(UserRegion.user_id == user.id, UserRegion.region_id == region.id).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 동네입니다.")
+
+    # 첫 동네 등록이면 무조건 대표로 — 대표가 하나도 없는 상태를 만들지 않기 위함.
+    make_primary = want_primary or existing_count == 0
+    if make_primary:
+        db.query(UserRegion).filter(UserRegion.user_id == user.id, UserRegion.is_primary.is_(True)).update(
+            {UserRegion.is_primary: False}
+        )
+
+    user_region = UserRegion(user_id=user.id, region_id=region.id, radius_m=radius_m, is_primary=make_primary)
+    db.add(user_region)
+    db.flush()
+    if make_primary:
+        _sync_primary_cache(user, user_region)
     db.commit()
+    db.refresh(user_region)
+    return _to_user_region_item(user_region, region)
+
+
+def _set_primary_user_region(db: Session, user: User, user_region: UserRegion, radius_m: int | None) -> UserRegionItem:
+    db.query(UserRegion).filter(
+        UserRegion.user_id == user.id, UserRegion.is_primary.is_(True), UserRegion.id != user_region.id
+    ).update({UserRegion.is_primary: False})
+    user_region.is_primary = True
+    if radius_m is not None:
+        user_region.radius_m = radius_m
+    db.flush()
+    _sync_primary_cache(user, user_region)
+    db.commit()
+    db.refresh(user_region)
+    region = db.get(Region, user_region.region_id)
+    return _to_user_region_item(user_region, region)
+
+
+def list_user_regions(db: Session, user: User) -> UserRegionListResponse:
+    rows = (
+        db.query(UserRegion, Region)
+        .join(Region, UserRegion.region_id == Region.id)
+        .filter(UserRegion.user_id == user.id)
+        .order_by(UserRegion.is_primary.desc(), UserRegion.created_at.asc())
+        .all()
+    )
+    return UserRegionListResponse(items=[_to_user_region_item(ur, r) for ur, r in rows])
+
+
+def add_user_region(db: Session, user: User, payload: UserRegionCreateRequest) -> UserRegionItem:
+    region = _resolve_region(db, payload.region_id, payload.dong_code)
+    return _add_user_region(db, user, region, payload.radius_m, payload.is_primary)
+
+
+def set_primary_user_region(
+    db: Session, user: User, region_id: int, payload: UserRegionUpdateRequest
+) -> UserRegionItem:
+    user_region = _get_owned_user_region(db, user, region_id)
+    return _set_primary_user_region(db, user, user_region, payload.radius_m)
+
+
+def remove_user_region(db: Session, user: User, region_id: int) -> None:
+    user_region = _get_owned_user_region(db, user, region_id)
+    if db.query(UserRegion).filter(UserRegion.user_id == user.id).count() <= 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="최소 1개의 동네는 있어야 해요.")
+
+    was_primary = user_region.is_primary
+    db.delete(user_region)
+    db.flush()
+    if was_primary:
+        # 남은 동네가 정확히 1개 남아있는 상태 — 그 동네를 자동으로 대표로 승격.
+        remaining = db.query(UserRegion).filter(UserRegion.user_id == user.id).first()
+        remaining.is_primary = True
+        _sync_primary_cache(user, remaining)
+    db.commit()
+
+
+def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User:
+    """하위 호환용 단일 API — "대표 동네를 이 값으로 바꾼다"로 동작한다.
+
+    이미 등록된 동네면 대표 전환(TASK-11-03), 새 동네면 추가(TASK-11-02)
+    로직을 그대로 재사용한다 — docs/issue/11-multi-region.md TASK-11-05.
+    """
+    region = _resolve_region(db, payload.region_id, payload.dong_code)
+    existing = db.query(UserRegion).filter(UserRegion.user_id == user.id, UserRegion.region_id == region.id).first()
+    if existing is not None:
+        _set_primary_user_region(db, user, existing, payload.radius_m)
+    else:
+        _add_user_region(db, user, region, payload.radius_m, want_primary=True)
     db.refresh(user)
     return user
 

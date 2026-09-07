@@ -27,6 +27,9 @@ class Transaction(Base):
     chat_count: Mapped[int] = mapped_column(Integer, default=0)
     interest_count: Mapped[int] = mapped_column(Integer, default=0)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 크롤링이 원본 이미지를 NCP에 올려둔 키(현재 노원구 CSV만 "id"/"이미지파일" 컬럼을
+    # 갖고 있어 값이 채워진다). Product.image_object_key와 동일한 버킷/규칙을 쓴다.
+    image_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     listed_at: Mapped[date] = mapped_column(Date)
     traded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
