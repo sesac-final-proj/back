@@ -1,6 +1,6 @@
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,10 @@ from app.api.v1.auth.schema import (
     SignupRequest,
     SignupResponse,
     TokenResponse,
+    UserRegionCreateRequest,
+    UserRegionItem,
+    UserRegionListResponse,
+    UserRegionUpdateRequest,
 )
 from app.core.config import settings
 from app.core.db import get_db
@@ -60,6 +64,39 @@ def update_region(
     db: Session = Depends(get_db),
 ):
     return service.update_region(db, user, payload)
+
+
+@router.get("/me/regions", response_model=UserRegionListResponse)
+def list_my_regions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return service.list_user_regions(db, user)
+
+
+@router.post("/me/regions", response_model=UserRegionItem, status_code=status.HTTP_201_CREATED)
+def add_my_region(
+    payload: UserRegionCreateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.add_user_region(db, user, payload)
+
+
+@router.patch("/me/regions/{region_id}", response_model=UserRegionItem)
+def set_primary_region(
+    region_id: int,
+    payload: UserRegionUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.set_primary_user_region(db, user, region_id, payload)
+
+
+@router.delete("/me/regions/{region_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_region(
+    region_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service.remove_user_region(db, user, region_id)
 
 
 @router.get("/me/summary", response_model=MeSummaryResponse)
