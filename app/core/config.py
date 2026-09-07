@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-secret"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 14
+    # 로그인 유지기간 5주 — 이 값만큼 refresh token JWT의 exp와 Redis TTL이 같이 늘어난다
+    # (security.create_refresh_token / redis_client.save_refresh_token 참고).
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 35
 
     FRONTEND_ORIGIN: str = "http://localhost:3000"
     FRONTEND_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
