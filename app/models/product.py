@@ -39,4 +39,6 @@ class Product(Base):
     seller_manner_temp: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     interest_count: Mapped[int] = mapped_column(Integer, default=0)
+    # NCP Object Storage key, products/{id}.{ext} 고정 — 상품당 1장.
+    image_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

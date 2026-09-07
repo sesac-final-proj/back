@@ -5,11 +5,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.trades import schema
+from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.analysis import Analysis, AnalysisResult
 from app.models.chat import ChatRoom
 from app.models.favorite import ProductFavorite
 from app.models.product import Product
+from app.models.recently_viewed import RecentlyViewedProduct
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -38,7 +40,10 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
 
 
 def _to_list_item(
-    product: Product, dong_name: str, chat_count: int, favorite_count: int
+    product: Product,
+    dong_name: str,
+    chat_count: int,
+    favorite_count: int,
 ) -> schema.ProductListItem:
     return schema.ProductListItem(
         id=product.id,
@@ -52,6 +57,7 @@ def _to_list_item(
         favorite_count=favorite_count,
         view_count=product.view_count,
         interest_count=product.interest_count,
+        thumbnail_url=storage.public_url(product.image_object_key) if product.image_object_key else None,
     )
 
 
@@ -63,6 +69,19 @@ def _favorite_count_subq():
     )
 
 
+def list_categories(db: Session) -> schema.CategoryListResponse:
+    # "중고거래"는 실제 카테고리가 아니라 글쓰기 폼에서 카테고리를 안 고르면
+    # 들어가는 기본값이라, 필터 선택지에서는 제외한다.
+    rows = (
+        db.query(Product.category)
+        .filter(Product.category != "중고거래")
+        .distinct()
+        .order_by(Product.category)
+        .all()
+    )
+    return schema.CategoryListResponse(items=[r[0] for r in rows if r[0]])
+
+
 def list_products(
     db: Session,
     region_id: int | None,
@@ -72,6 +91,11 @@ def list_products(
     page: int,
     size: int,
     created_by: int | None = None,
+    trade_type: str | None = None,
+    price_min: int | None = None,
+    price_max: int | None = None,
+    sort: str = "latest",
+    exclude_sold: bool = False,
 ) -> schema.ProductListResponse:
     chat_count_subq = (
         select(ChatRoom.product_id, func.count(ChatRoom.id).label("chat_count"))
@@ -81,7 +105,12 @@ def list_products(
     favorite_count_subq = _favorite_count_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+        )
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
@@ -92,22 +121,32 @@ def list_products(
         query = query.filter(Product.category == category)
     if trade_status is not None:
         query = query.filter(Product.trade_status == trade_status)
+    if exclude_sold:
+        query = query.filter(Product.trade_status != "SOLD")
     if q:
         like = f"%{q}%"
         query = query.filter(or_(Product.title.ilike(like), Product.search_keyword.ilike(like)))
     if created_by is not None:
         query = query.filter(Product.created_by == created_by)
+    if trade_type is not None:
+        query = query.filter(Product.trade_type == trade_type)
+    if price_min is not None:
+        query = query.filter(Product.desired_price >= price_min)
+    if price_max is not None:
+        query = query.filter(Product.desired_price <= price_max)
+
+    # id를 항상 2차 정렬키로 준다 — 크롤링 seed 데이터는 created_at이 날짜 단위(시분초
+    # 없음)라 같은 날짜인 행이 수천 건씩 동률이라, 이게 없으면 OFFSET 페이지네이션에서
+    # 동률 행 순서가 매 요청마다 달라져 페이지 간 중복/누락이 생김.
+    if sort == "price_asc":
+        order = (Product.desired_price.asc().nullslast(), Product.id.desc())
+    elif sort == "price_desc":
+        order = (Product.desired_price.desc().nullslast(), Product.id.desc())
+    else:
+        order = (Product.created_at.desc(), Product.id.desc())
 
     total = query.count()
-    rows = (
-        # 크롤링 seed 데이터는 created_at이 날짜 단위(시분초 없음)라 같은 날짜인
-        # 행이 수천 건씩 동률 — id를 2차 정렬키로 안 주면 OFFSET 페이지네이션에서
-        # 동률 행 순서가 매 요청마다 달라져 페이지 간 중복/누락이 생김.
-        query.order_by(Product.created_at.desc(), Product.id.desc())
-        .offset((page - 1) * size)
-        .limit(size)
-        .all()
-    )
+    rows = query.order_by(*order).offset((page - 1) * size).limit(size).all()
     items = [
         _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
         for p, dong_name, chat_count, favorite_count in rows
@@ -115,7 +154,7 @@ def list_products(
     return schema.ProductListResponse(items=items, total=total)
 
 
-def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResponse:
+def get_product_detail(db: Session, product_id: int, user: User | None = None) -> schema.ProductDetailResponse:
     row = (
         db.query(Product, Region.dong_name)
         .join(Region, Product.region_id == Region.id)
@@ -141,6 +180,7 @@ def get_product_detail(db: Session, product_id: int) -> schema.ProductDetailResp
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
+        is_mine=user is not None and product.created_by == user.id,
     )
 
 
@@ -212,7 +252,12 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
     favorite_count_subq = _favorite_count_subq()
 
     query = (
-        db.query(Product, Region.dong_name, chat_count_subq.c.chat_count, favorite_count_subq.c.favorite_count)
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+        )
         .join(ProductFavorite, ProductFavorite.product_id == Product.id)
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
@@ -233,6 +278,67 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
     return schema.ProductFavoritesResponse(items=items, total=total)
 
 
+RECENTLY_VIEWED_LIMIT = 20
+
+
+def record_recently_viewed(db: Session, user: User, product_id: int) -> None:
+    if db.get(Product, product_id) is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+
+    updated = (
+        db.query(RecentlyViewedProduct)
+        .filter(RecentlyViewedProduct.user_id == user.id, RecentlyViewedProduct.product_id == product_id)
+        .update({RecentlyViewedProduct.viewed_at: func.now()})
+    )
+    if not updated:
+        db.add(RecentlyViewedProduct(user_id=user.id, product_id=product_id))
+    db.commit()
+
+    # 사용자당 최근 N개만 유지 — 그보다 오래된 건 정리(무한정 쌓이지 않게).
+    stale_ids = (
+        db.query(RecentlyViewedProduct.id)
+        .filter(RecentlyViewedProduct.user_id == user.id)
+        .order_by(RecentlyViewedProduct.viewed_at.desc())
+        .offset(RECENTLY_VIEWED_LIMIT)
+        .all()
+    )
+    if stale_ids:
+        db.query(RecentlyViewedProduct).filter(
+            RecentlyViewedProduct.id.in_([row[0] for row in stale_ids])
+        ).delete(synchronize_session=False)
+        db.commit()
+
+
+def list_recently_viewed(db: Session, user: User) -> schema.RecentlyViewedResponse:
+    chat_count_subq = (
+        select(ChatRoom.product_id, func.count(ChatRoom.id).label("chat_count"))
+        .group_by(ChatRoom.product_id)
+        .subquery()
+    )
+    favorite_count_subq = _favorite_count_subq()
+
+    query = (
+        db.query(
+            Product,
+            Region.dong_name,
+            chat_count_subq.c.chat_count,
+            favorite_count_subq.c.favorite_count,
+        )
+        .join(RecentlyViewedProduct, RecentlyViewedProduct.product_id == Product.id)
+        .join(Region, Product.region_id == Region.id)
+        .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
+        .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        .filter(RecentlyViewedProduct.user_id == user.id)
+    )
+    total = query.count()
+    rows = query.order_by(RecentlyViewedProduct.viewed_at.desc()).limit(RECENTLY_VIEWED_LIMIT).all()
+    items = [
+        _to_list_item(p, dong_name, chat_count or 0, favorite_count or 0)
+        for p, dong_name, chat_count, favorite_count in rows
+    ]
+    return schema.RecentlyViewedResponse(items=items, total=total)
+
+
 def delete_product(db: Session, user: User, product_id: int) -> None:
     product = db.get(Product, product_id)
     if product is None:
@@ -240,10 +346,64 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
     if product.created_by != user.id:
         raise PermissionDeniedError("본인 상품만 삭제할 수 있습니다.")
 
+    if product.image_object_key:
+        storage.delete_object(product.image_object_key)
     db.query(ProductFavorite).filter(ProductFavorite.product_id == product_id).delete()
     # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
     db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
     db.delete(product)
+    db.commit()
+
+
+def _get_owned_product(db: Session, user: User, product_id: int) -> Product:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise NotFoundError("상품을 찾을 수 없습니다.")
+    if product.created_by != user.id:
+        raise PermissionDeniedError("본인 상품에만 이미지를 등록/삭제할 수 있습니다.")
+    return product
+
+
+def presign_product_image(
+    db: Session, user: User, product_id: int, data: schema.ImagePresignRequest
+) -> schema.ImagePresignResponse:
+    _get_owned_product(db, user, product_id)
+    try:
+        object_key = storage.build_product_image_key(product_id, data.content_type)
+    except ValueError as e:
+        raise AppError(str(e))
+    return schema.ImagePresignResponse(
+        upload_url=storage.presigned_put_url(object_key, data.content_type),
+        object_key=object_key,
+        image_url=storage.public_url(object_key),
+    )
+
+
+def register_product_image(
+    db: Session, user: User, product_id: int, object_key: str
+) -> schema.ProductImageResponse:
+    product = _get_owned_product(db, user, product_id)
+
+    # presign이 내준 키만 등록 가능 — 다른 상품 키를 갖다 붙이는 걸 막는다.
+    if not object_key.startswith(f"products/{product_id}."):
+        raise AppError("잘못된 이미지 키입니다.")
+
+    old_key = product.image_object_key
+    product.image_object_key = object_key
+    db.commit()
+    if old_key and old_key != object_key:
+        storage.delete_object(old_key)
+
+    return schema.ProductImageResponse(image_url=storage.public_url(object_key))
+
+
+def delete_product_image(db: Session, user: User, product_id: int) -> None:
+    product = _get_owned_product(db, user, product_id)
+    if product.image_object_key is None:
+        raise NotFoundError("이미지를 찾을 수 없습니다.")
+
+    storage.delete_object(product.image_object_key)
+    product.image_object_key = None
     db.commit()
 
 

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.chats import schema
 from app.api.v1.safety import service as safety_service
 from app.api.v1.trades import service as trade_service
+from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.product import Product
@@ -107,12 +108,37 @@ def list_my_chat_rooms(db: Session, user: User, page: int, size: int) -> schema.
     return schema.ChatRoomListResponse(items=items, total=total)
 
 
-def _post_message(db: Session, room: ChatRoom, sender_id: int, content: str) -> ChatMessage:
-    message = ChatMessage(chat_room_id=room.id, sender_id=sender_id, content=content)
+def _to_message_response(message: ChatMessage) -> schema.MessageResponse:
+    return schema.MessageResponse(
+        id=message.id,
+        chat_room_id=message.chat_room_id,
+        sender_id=message.sender_id,
+        message_type=message.message_type,
+        content=message.content,
+        image_url=storage.public_url(message.image_object_key) if message.image_object_key else None,
+        created_at=message.created_at,
+    )
+
+
+def _post_message(
+    db: Session,
+    room: ChatRoom,
+    sender_id: int,
+    message_type: str = "TEXT",
+    content: str | None = None,
+    image_object_key: str | None = None,
+) -> ChatMessage:
+    message = ChatMessage(
+        chat_room_id=room.id,
+        sender_id=sender_id,
+        message_type=message_type,
+        content=content,
+        image_object_key=image_object_key,
+    )
     db.add(message)
     db.flush()  # message.created_at 확보
 
-    room.last_message = message.content
+    room.last_message = content if message_type == "TEXT" else "사진을 보냈습니다"
     room.last_message_at = message.created_at
 
     # 실시간 push는 범위 밖(REST 폴링 전제) — 발신자를 제외한 참여자의 안읽음만 증가.
@@ -121,6 +147,24 @@ def _post_message(db: Session, room: ChatRoom, sender_id: int, content: str) -> 
         ChatRoomParticipant.user_id != sender_id,
     ).update({ChatRoomParticipant.unread_count: ChatRoomParticipant.unread_count + 1})
     return message
+
+
+def presign_chat_image(
+    db: Session, user: User, chat_room_id: int, data: schema.ImagePresignRequest
+) -> schema.ImagePresignResponse:
+    if db.get(ChatRoom, chat_room_id) is None:
+        raise NotFoundError("채팅방을 찾을 수 없습니다.")
+    if _get_participant(db, chat_room_id, user.id) is None:
+        raise PermissionDeniedError("참여자만 이미지를 보낼 수 있습니다.")
+    try:
+        object_key = storage.build_object_key("chat", chat_room_id, data.content_type)
+    except ValueError as e:
+        raise AppError(str(e))
+    return schema.ImagePresignResponse(
+        upload_url=storage.presigned_put_url(object_key, data.content_type),
+        object_key=object_key,
+        image_url=storage.public_url(object_key),
+    )
 
 
 def send_message(
@@ -141,10 +185,16 @@ def send_message(
     if any(safety_service.is_blocked(db, user.id, other_id) for other_id in other_ids):
         raise PermissionDeniedError("차단 관계에서는 메시지를 보낼 수 없습니다.")
 
-    message = _post_message(db, room, user.id, data.content)
+    if data.message_type == "IMAGE":
+        # presign이 내준 이 방의 키만 등록 가능 — 다른 방 폴더의 키를 갖다 붙이는 걸 막는다.
+        prefix = f"chat/{chat_room_id}/"
+        if not data.image_object_key.startswith(prefix):
+            raise AppError("잘못된 이미지 키입니다.")
+
+    message = _post_message(db, room, user.id, data.message_type, data.content, data.image_object_key)
     db.commit()
     db.refresh(message)
-    return schema.MessageResponse.model_validate(message)
+    return _to_message_response(message)
 
 
 def leave_chat_room(db: Session, user: User, chat_room_id: int) -> None:
@@ -169,10 +219,10 @@ def update_trade_status(
     # 소유자 확인은 update_product_status가 처리 (아니면 PermissionDeniedError) — 여기서 중복 확인하지 않는다.
     trade_service.update_product_status(db, user, room.product_id, data.trade_status)
 
-    message = _post_message(db, room, user.id, _STATUS_MESSAGES[data.trade_status])
+    message = _post_message(db, room, user.id, "TEXT", _STATUS_MESSAGES[data.trade_status])
     db.commit()
     db.refresh(message)
-    return schema.MessageResponse.model_validate(message)
+    return _to_message_response(message)
 
 
 def list_messages(db: Session, user: User, chat_room_id: int, page: int, size: int) -> schema.MessageListResponse:
@@ -194,5 +244,5 @@ def list_messages(db: Session, user: User, chat_room_id: int, page: int, size: i
     participant.unread_count = 0
     db.commit()
 
-    items = [schema.MessageResponse.model_validate(m) for m in rows]
+    items = [_to_message_response(m) for m in rows]
     return schema.MessageListResponse(items=items, total=total)

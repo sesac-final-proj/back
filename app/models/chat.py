@@ -36,5 +36,9 @@ class ChatMessage(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     chat_room_id: Mapped[int] = mapped_column(ForeignKey("chat_rooms.id"))
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    content: Mapped[str] = mapped_column(Text)
+    message_type: Mapped[str] = mapped_column(String(10), default="TEXT", server_default="TEXT")
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # NCP Object Storage 상의 key ("chat/{chat_room_id}/..."). 공개 URL은
+    # app.core.storage.public_url()로 그때그때 조립한다 (Product.image_object_key와 동일 패턴).
+    image_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

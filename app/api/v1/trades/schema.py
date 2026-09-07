@@ -7,6 +7,11 @@ from app.core.pagination import Page
 
 TradeStatus = Literal["SALE", "RESERVED", "SOLD"]
 TradeType = Literal["SALE", "FREE"]
+TradeSort = Literal["latest", "price_asc", "price_desc"]
+
+
+class CategoryListResponse(BaseModel):
+    items: list[str]
 
 
 class ProductCreateRequest(BaseModel):
@@ -44,6 +49,7 @@ class ProductListItem(BaseModel):
     favorite_count: int
     view_count: int
     interest_count: int
+    thumbnail_url: str | None = None
 
 
 ProductListResponse = Page[ProductListItem]
@@ -57,6 +63,26 @@ class ProductDetailResponse(ProductListItem):
     trade_place: str | None
     seller_nickname: str | None
     seller_manner_temp: float | None
+    is_mine: bool = False
+
+
+class ImagePresignRequest(BaseModel):
+    filename: str
+    content_type: str
+
+
+class ImagePresignResponse(BaseModel):
+    upload_url: str
+    object_key: str
+    image_url: str
+
+
+class ImageRegisterRequest(BaseModel):
+    object_key: str
+
+
+class ProductImageResponse(BaseModel):
+    image_url: str
 
 
 class ProductStatusUpdateRequest(BaseModel):
@@ -79,6 +105,7 @@ class FavoriteToggleResponse(BaseModel):
 
 
 ProductFavoritesResponse = Page[ProductListItem]
+RecentlyViewedResponse = Page[ProductListItem]
 
 
 class AnalysisRequest(BaseModel):

@@ -8,6 +8,7 @@ from app.core.security import decode_token
 from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 def get_current_user(
@@ -35,6 +36,18 @@ def get_current_user(
     if user is None:
         raise credentials_error
     return user
+
+
+def get_current_user_optional(
+    token: str | None = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)
+) -> User | None:
+    """비로그인 접근도 허용하는 엔드포인트에서 '내 글 여부' 같은 부가 정보만 곁들일 때 사용."""
+    if token is None:
+        return None
+    try:
+        return get_current_user(token, db)
+    except HTTPException:
+        return None
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
