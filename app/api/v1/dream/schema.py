@@ -30,6 +30,7 @@ class FacilityItem(BaseModel):
     facility_type: str
     address: str
     phone: str | None = None
+    homepage_url: str | None = None
     lat: float | None = None
     lng: float | None = None
 

@@ -71,6 +71,19 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
         address = str(row.get("FCLT_ADDR") or "").strip()
         coordinate = _geocode(address)
         identity = str(row.get("FCLT_CD") or f"{name}|{address}")
+        homepage_url = next(
+            (
+                str(row.get(key)).strip()
+                for key in ("FCLT_HMPG", "FCLT_HMPG_URL", "FCLT_HOME_URL", "HOMEPAGE")
+                if row.get(key)
+            ),
+            None,
+        )
+        if not homepage_url and row.get("FCLT_CD"):
+            homepage_url = (
+                "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/"
+                f"BD_selectFcltyInfoManage.do?q_fcltyId={quote(str(row['FCLT_CD']), safe='')}&q_fclty=1003"
+            )
         items.append(
             schema.FacilityItem(
                 id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
@@ -79,6 +92,7 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                 facility_type=str(row.get("FCLT_KIND_NM") or "아동복지시설").strip(),
                 address=address,
                 phone=str(row.get("FCLT_TEL_NO") or "").strip() or None,
+                homepage_url=homepage_url,
                 lat=coordinate[0] if coordinate else None,
                 lng=coordinate[1] if coordinate else None,
             )
