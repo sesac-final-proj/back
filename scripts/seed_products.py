@@ -11,6 +11,7 @@ from datetime import datetime, time
 
 from app.core.db import SessionLocal
 from app.models.product import Product
+from app.models.region import Region
 from app.models.transaction import Transaction
 
 # Transaction.status(크롤링 원문) -> Product.trade_status
@@ -22,11 +23,16 @@ STATUS_MAP = {
 }
 
 
-def seed() -> tuple[int, int]:
+def seed(gu_name: str | None = None) -> tuple[int, int]:
+    """gu_name을 주면 그 구의 Transaction만 변환한다 — 이미 Product로 변환된
+    구를 재실행해 중복 적재하는 것을 피하기 위함(예: 노원구 추가 적재 시)."""
     db = SessionLocal()
     inserted = skipped = 0
     try:
-        transactions = db.query(Transaction).filter(Transaction.region_id.isnot(None)).all()
+        query = db.query(Transaction).filter(Transaction.region_id.isnot(None))
+        if gu_name is not None:
+            query = query.join(Region, Transaction.region_id == Region.id).filter(Region.gu_name == gu_name)
+        transactions = query.all()
         for t in transactions:
             trade_status = STATUS_MAP.get(t.status)
             if trade_status is None:
@@ -45,6 +51,7 @@ def seed() -> tuple[int, int]:
                     view_count=t.view_count,
                     interest_count=t.interest_count,
                     desired_price=t.price,
+                    image_object_key=t.image_object_key,
                     region_id=t.region_id,
                     created_by=None,  # 크롤링 원본 데이터 — 우리 서비스 유저 소유 아님
                     trade_status=trade_status,

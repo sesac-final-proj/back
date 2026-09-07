@@ -6,6 +6,7 @@ data/*.csv (당근 크롤링 원천 거래 데이터)를 Transaction 테이블�
 """
 import csv
 import glob
+import os
 from datetime import date
 
 from app.core.db import SessionLocal
@@ -36,6 +37,14 @@ def _parse_count(raw: str) -> int:
     # 송파구 CSV엔 채팅수/관심수/조회수가 빈 문자열인 행이 있다(영등포구엔 없었음) — 0으로 취급.
     raw = raw.strip()
     return int(raw) if raw else 0
+
+
+def _parse_image_key(row: dict) -> str | None:
+    # "이미지파일" 컬럼(현재 노원구 CSV만 존재)은 크롤러 로컬 경로
+    # ("노원구/images/{id}.png") 그대로라 실제 버킷 키("products/{id}.png")와
+    # 다르다 — 파일명만 취해 우리 버킷 규칙에 맞춘다.
+    raw = row.get("이미지파일", "").strip()
+    return f"products/{os.path.basename(raw)}" if raw else None
 
 
 def _truncate(raw: str | None, max_len: int) -> str | None:
@@ -75,6 +84,7 @@ def seed(csv_glob: str = "data/*.csv") -> tuple[int, int]:
                             chat_count=_parse_count(row["채팅수"]),
                             interest_count=_parse_count(row["관심수"]),
                             view_count=_parse_count(row["조회수"]),
+                            image_object_key=_parse_image_key(row),
                             listed_at=date.fromisoformat(row["등록시각"].strip()),
                         )
                     )

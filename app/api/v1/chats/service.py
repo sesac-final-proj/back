@@ -7,6 +7,7 @@ from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.product import Product
+from app.models.region import Region
 from app.models.user import User
 
 _STATUS_MESSAGES = {
@@ -40,7 +41,11 @@ def create_chat_room(db: Session, user: User, data: schema.ChatRoomCreateRequest
     # 여기 도달하면 항상 구매자다 (본인 상품이면 위에서 이미 막힘) -> is_seller=False 고정.
     existing = _find_existing_trade_room(db, product.id, user.id)
     if existing is not None:
-        return _to_response(existing, existing_participant_unread(db, existing.id, user.id), is_seller=False)
+        counterpart = _counterparts_by_room(db, [existing.id], user.id).get(existing.id)
+        return _to_response(
+            existing, existing_participant_unread(db, existing.id, user.id), is_seller=False,
+            product=product, counterpart=counterpart,
+        )
 
     room = ChatRoom(type=data.type, title=product.title, product_id=product.id, verified=False)
     db.add(room)
@@ -52,7 +57,8 @@ def create_chat_room(db: Session, user: User, data: schema.ChatRoomCreateRequest
     db.commit()
     db.refresh(room)
 
-    return _to_response(room, 0, is_seller=False)
+    counterpart = _counterparts_by_room(db, [room.id], user.id).get(room.id)
+    return _to_response(room, 0, is_seller=False, product=product, counterpart=counterpart)
 
 
 def _find_existing_trade_room(db: Session, product_id: int, user_id: int) -> ChatRoom | None:
@@ -73,7 +79,34 @@ def existing_participant_unread(db: Session, chat_room_id: int, user_id: int) ->
     return participant.unread_count if participant else 0
 
 
-def _to_response(room: ChatRoom, unread_count: int, is_seller: bool) -> schema.ChatRoomResponse:
+def _counterparts_by_room(
+    db: Session, room_ids: list[int], user_id: int
+) -> dict[int, tuple[str, str | None]]:
+    """방마다 "나 아닌 다른 참여자"의 (닉네임, 활동동네)를 모아온다.
+
+    TRADE 채팅방은 항상 참여자가 정확히 2명(판매자/구매자)이라 방 하나당
+    상대방도 하나로 고정된다 — N+1 방지를 위해 room_ids를 한 번에 조회.
+    """
+    if not room_ids:
+        return {}
+    rows = (
+        db.query(ChatRoomParticipant.chat_room_id, User.nickname, Region.dong_name)
+        .join(User, User.id == ChatRoomParticipant.user_id)
+        .outerjoin(Region, Region.id == User.region_id)
+        .filter(ChatRoomParticipant.chat_room_id.in_(room_ids), ChatRoomParticipant.user_id != user_id)
+        .all()
+    )
+    return {room_id: (nickname, dong_name) for room_id, nickname, dong_name in rows}
+
+
+def _to_response(
+    room: ChatRoom,
+    unread_count: int,
+    is_seller: bool,
+    product: Product | None = None,
+    counterpart: tuple[str, str | None] | None = None,
+) -> schema.ChatRoomResponse:
+    nickname, dong_name = counterpart or (None, None)
     return schema.ChatRoomResponse(
         id=room.id,
         type=room.type,
@@ -84,16 +117,32 @@ def _to_response(room: ChatRoom, unread_count: int, is_seller: bool) -> schema.C
         unread_count=unread_count,
         verified=room.verified,
         is_seller=is_seller,
+        counterpart_nickname=nickname,
+        counterpart_neighborhood_name=dong_name,
+        product_thumbnail_url=storage.public_url(product.image_object_key)
+        if product and product.image_object_key
+        else None,
+        product_price=product.desired_price if product else None,
+        product_trade_status=product.trade_status if product else None,
     )
 
 
-def list_my_chat_rooms(db: Session, user: User, page: int, size: int) -> schema.ChatRoomListResponse:
+def list_my_chat_rooms(
+    db: Session, user: User, page: int, size: int, product_id: int | None = None
+) -> schema.ChatRoomListResponse:
+    """내 채팅방 목록. product_id를 주면 그 상품에 걸린 채팅방만 걸러준다 —
+
+    판매자가 자기 글의 "채팅하기"를 눌렀을 때 그 글에 관심 보인 구매자별
+    채팅방을 N:1로 보여주는 용도(GET /api/v1/chats?product_id=...).
+    """
     query = (
-        db.query(ChatRoom, ChatRoomParticipant.unread_count, Product.created_by)
+        db.query(ChatRoom, ChatRoomParticipant.unread_count, Product)
         .join(ChatRoomParticipant, ChatRoomParticipant.chat_room_id == ChatRoom.id)
         .outerjoin(Product, Product.id == ChatRoom.product_id)
         .filter(ChatRoomParticipant.user_id == user.id)
     )
+    if product_id is not None:
+        query = query.filter(ChatRoom.product_id == product_id)
     total = query.count()
     rows = (
         query.order_by(ChatRoom.last_message_at.desc(), ChatRoom.created_at.desc())
@@ -101,9 +150,16 @@ def list_my_chat_rooms(db: Session, user: User, page: int, size: int) -> schema.
         .limit(size)
         .all()
     )
+    counterparts = _counterparts_by_room(db, [room.id for room, _, _ in rows], user.id)
     items = [
-        _to_response(room, unread_count, is_seller=(seller_id == user.id))
-        for room, unread_count, seller_id in rows
+        _to_response(
+            room,
+            unread_count,
+            is_seller=(product is not None and product.created_by == user.id),
+            product=product,
+            counterpart=counterparts.get(room.id),
+        )
+        for room, unread_count, product in rows
     ]
     return schema.ChatRoomListResponse(items=items, total=total)
 
