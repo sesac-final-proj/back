@@ -4,6 +4,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.admin.router import router as admin_router
 from app.api.v1.auth.router import legacy_router as legacy_auth_router
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.chats.router import router as chats_router
@@ -48,6 +49,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+app.include_router(admin_router)
 app.include_router(trades_router)
 app.include_router(chats_router)
 app.include_router(dream_router)
