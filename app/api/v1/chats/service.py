@@ -31,7 +31,7 @@ def create_chat_room(db: Session, user: User, data: schema.ChatRoomCreateRequest
         raise AppError("TRADE 타입 채팅방만 아직 지원합니다.")
 
     product = db.get(Product, data.product_id)
-    if product is None or product.deleted_at is not None:
+    if product is None:
         raise NotFoundError("상품을 찾을 수 없습니다.")
     if product.created_by == user.id:
         raise AppError("본인 상품에는 채팅을 걸 수 없습니다.")

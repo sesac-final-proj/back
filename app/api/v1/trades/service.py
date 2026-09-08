@@ -275,7 +275,7 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
-        .filter(ProductFavorite.user_id == user.id, Product.deleted_at.is_(None))
+        .filter(ProductFavorite.user_id == user.id)
     )
     total = query.count()
     rows = (
@@ -341,7 +341,7 @@ def list_recently_viewed(db: Session, user: User) -> schema.RecentlyViewedRespon
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
-        .filter(RecentlyViewedProduct.user_id == user.id, Product.deleted_at.is_(None))
+        .filter(RecentlyViewedProduct.user_id == user.id)
     )
     total = query.count()
     rows = query.order_by(RecentlyViewedProduct.viewed_at.desc()).limit(RECENTLY_VIEWED_LIMIT).all()
