@@ -89,15 +89,16 @@ def main():
         # 정상 송금
         message = wallet_service.send_payment(db, buyer, room.id, PaymentCreateRequest(amount=30000))
         assert message.message_type == "PAYMENT"
-        assert message.payment_amount == 30000
-        assert message.payment_id is not None
+        assert message.payment is not None
+        assert message.payment.amount == 30000
+        assert message.payment.balance_after == 70000
 
         db.refresh(buyer)
         db.refresh(seller)
         assert buyer.wallet_balance == 70000
         assert seller.wallet_balance == 130000
 
-        wallet_tx = db.get(WalletTransaction, message.payment_id)
+        wallet_tx = db.get(WalletTransaction, message.payment.transaction_id)
         assert wallet_tx.balance_after == 70000
         assert wallet_tx.sender_id == buyer.id and wallet_tx.receiver_id == seller.id
 
@@ -131,7 +132,9 @@ def main():
         # 목록 API(list_messages)에도 payment 필드가 채워져 나오는지
         page = chat_service.list_messages(db, buyer, room.id, page=1, size=20)
         payment_items = [m for m in page.items if m.message_type == "PAYMENT"]
-        assert len(payment_items) == 1 and payment_items[0].payment_amount == 30000
+        assert len(payment_items) == 1
+        assert payment_items[0].payment.amount == 30000
+        assert payment_items[0].payment.balance_after == 70000
 
         # 일반 메시지 API로는 PAYMENT 타입을 위조할 수 없다 (스키마 레벨에서 거부)
         from app.api.v1.chats.schema import MessageCreateRequest

@@ -69,7 +69,7 @@ def send_payment(
     db.commit()
     db.refresh(message)
 
-    return chat_service._to_message_response(message, payment_amount=amount)
+    return chat_service._to_message_response(message, payment=(amount, wallet_tx.balance_after))
 
 
 def get_payment_detail(db: Session, user: User, wallet_tx_id: int) -> schema.PaymentDetailResponse:
