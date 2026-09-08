@@ -15,6 +15,7 @@ from app.models.recently_viewed import RecentlyViewedProduct
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.wallet import WalletTransaction
 
 
 def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -> Product:
@@ -377,6 +378,10 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
         db.query(Analysis).filter(Analysis.id.in_(analysis_ids)).delete(synchronize_session=False)
     # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
     db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
+    # 송금 기록(당근페이)도 돈이 실제로 오간 이력이라 보존, 참조만 끊는다.
+    db.query(WalletTransaction).filter(WalletTransaction.product_id == product_id).update(
+        {WalletTransaction.product_id: None}
+    )
     db.delete(product)
     db.commit()
 

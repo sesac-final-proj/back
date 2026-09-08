@@ -41,4 +41,6 @@ class ChatMessage(Base):
     # NCP Object Storage 상의 key ("chat/{chat_room_id}/..."). 공개 URL은
     # app.core.storage.public_url()로 그때그때 조립한다 (Product.image_object_key와 동일 패턴).
     image_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # message_type == "PAYMENT"일 때만 채워짐 — 어떤 당근페이 송금 건인지 연결.
+    payment_id: Mapped[int | None] = mapped_column(ForeignKey("wallet_transactions.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
