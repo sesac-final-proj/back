@@ -169,6 +169,17 @@ def get_product_detail(db: Session, product_id: int, user: User | None = None) -
         db.query(func.count(ProductFavorite.id)).filter(ProductFavorite.product_id == product.id).scalar()
     )
     item = _to_list_item(product, dong_name, chat_count or 0, favorite_count or 0)
+
+    # 크롤링 seed 데이터는 seller_nickname이 원문 그대로 박혀있지만, 실제로 앱에서
+    # 로그인해서 올린 글은 이 컬럼을 안 채워서 항상 null이었다 — 그래서 프론트가
+    # 매번 "주황가지님" 플레이스홀더로 표시됨. created_by가 있으면(=실사용자 글)
+    # 그 유저의 현재 닉네임을 우선한다 — 닉네임을 나중에 바꿔도 항상 최신값으로 보임.
+    seller_nickname = product.seller_nickname
+    if product.created_by is not None:
+        seller = db.get(User, product.created_by)
+        if seller is not None:
+            seller_nickname = seller.nickname
+
     return schema.ProductDetailResponse(
         **item.model_dump(),
         category=product.category,
@@ -176,7 +187,7 @@ def get_product_detail(db: Session, product_id: int, user: User | None = None) -
         search_keyword=product.search_keyword,
         description=product.description,
         trade_place=product.trade_place,
-        seller_nickname=product.seller_nickname,
+        seller_nickname=seller_nickname,
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
