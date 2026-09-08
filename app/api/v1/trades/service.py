@@ -114,6 +114,8 @@ def list_products(
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        # 작성자가 탈퇴한 글(auth/service.py withdraw_account가 세팅) — 피드/검색엔 항상 숨긴다.
+        .filter(Product.deleted_at.is_(None))
     )
     if region_id is not None:
         query = query.filter(Product.region_id == region_id)
