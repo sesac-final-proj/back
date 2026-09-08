@@ -42,3 +42,6 @@ class Product(Base):
     # NCP Object Storage key, products/{id}.{ext} 고정 — 상품당 1장.
     image_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # 작성자 회원 탈퇴 시 채팅 참조는 남기되 피드/검색에서만 숨기기 위한 소프트 삭제
+    # 마커 — trade_status는 DB CHECK(SALE/RESERVED/SOLD)에 걸려 재사용 불가.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

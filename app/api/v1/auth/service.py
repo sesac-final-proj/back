@@ -32,6 +32,7 @@ from app.core.security import (
 )
 from app.models.block import UserBlock
 from app.models.favorite import ProductFavorite
+from app.models.product import Product
 from app.models.recently_viewed import RecentlyViewedProduct
 from app.models.region import Region
 from app.models.user import RefreshToken, SocialAccount, User, UserRole
@@ -126,6 +127,8 @@ def withdraw_account(db: Session, user: User, refresh_token: str | None) -> dict
     상대방 쪽 대화 기록/거래 내역까지 같이 깨지기 때문. 대신 유저 row는 남기되 로그인
     불가능한 상태로 익명화해서, 이후 어디서든(채팅/판매글) 닉네임을 조회하면 자동으로
     "탈퇴회원"으로 보이게 한다 (get_product_detail의 seller_nickname 조회와 동일한 패턴).
+    작성한 판매글은 deleted_at을 찍어 피드/검색에서만 숨기고, 이미 연결된 채팅방에서는
+    (get_product_detail이 deleted_at을 안 보므로) 계속 조회 가능하게 남긴다.
     """
     if refresh_token:
         try:
@@ -142,6 +145,9 @@ def withdraw_account(db: Session, user: User, refresh_token: str | None) -> dict
     db.query(UserBlock).filter(
         (UserBlock.blocker_id == user.id) | (UserBlock.blocked_id == user.id)
     ).delete(synchronize_session=False)
+    db.query(Product).filter(Product.created_by == user.id).update(
+        {Product.deleted_at: datetime.now(timezone.utc)}, synchronize_session=False
+    )
 
     user.nickname = f"탈퇴회원{user.id}"
     user.email = f"withdrawn-{user.id}@withdrawn.local"
