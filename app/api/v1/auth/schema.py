@@ -35,6 +35,10 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
+class WithdrawRequest(BaseModel):
+    refresh_token: str | None = None
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 
