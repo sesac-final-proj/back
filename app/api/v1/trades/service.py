@@ -349,6 +349,19 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
     if product.image_object_key:
         storage.delete_object(product.image_object_key)
     db.query(ProductFavorite).filter(ProductFavorite.product_id == product_id).delete()
+    # "최근 본" 기록은 개인 열람 이력일 뿐이라 상품이 없어지면 같이 지운다
+    # (ChatRoom과 달리 nullable FK가 아니라서 끊는 게 아니라 삭제).
+    db.query(RecentlyViewedProduct).filter(RecentlyViewedProduct.product_id == product_id).delete()
+    # 가격분석(create_analysis)은 분석 전용 임시 상품을 만들어 1:1로 물고 있어서
+    # (Analysis.product_id NOT NULL, 끊을 수 없음) 상품과 같이 지운다.
+    analysis_ids = [
+        row[0] for row in db.query(Analysis.id).filter(Analysis.product_id == product_id).all()
+    ]
+    if analysis_ids:
+        db.query(AnalysisResult).filter(AnalysisResult.analysis_id.in_(analysis_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Analysis).filter(Analysis.id.in_(analysis_ids)).delete(synchronize_session=False)
     # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
     db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
     db.delete(product)
