@@ -31,6 +31,8 @@ class FacilityItem(BaseModel):
     address: str
     phone: str | None = None
     homepage_url: str | None = None
+    established_date: str | None = None
+    operation_status: str | None = None
     lat: float | None = None
     lng: float | None = None
 
@@ -39,7 +41,7 @@ class FacilityListResponse(BaseModel):
     items: list[FacilityItem]
     total: int
     geocoded_count: int
-    source: Literal["seoul_open_data", "seoul_sample"]
+    source: Literal["csv", "json_412", "seoul_open_data", "seoul_sample"]
     notice: str | None = None
 
 
