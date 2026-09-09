@@ -369,11 +369,21 @@ class PriceClusterItem(BaseModel):
     sample_count: int
 
 
+class PriceFeatureImportanceItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    feature_set: str
+    feature: str
+    gain: float
+    split: int
+
+
 class PriceModelChartsResponse(BaseModel):
     predictions: list[PricePredictionItem]
     platform_comparisons: list[PricePlatformComparisonItem]
     platform_tests: list[PricePlatformTestItem]
     clusters: list[PriceClusterItem]
+    feature_importance: list[PriceFeatureImportanceItem]
 
 
 NoticeStatus = Literal["draft", "published", "hidden"]

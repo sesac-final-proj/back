@@ -5,6 +5,7 @@ from app.models.favorite import ProductFavorite  # noqa: F401
 from app.models.point import PointTransaction  # noqa: F401
 from app.models.price_model import (  # noqa: F401
     PriceCluster,
+    PriceFeatureImportance,
     PriceModelListing,
     PriceModelMetric,
     PricePlatformComparison,

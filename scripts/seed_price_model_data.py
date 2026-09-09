@@ -2,15 +2,17 @@
 
 python -m scripts.seed_price_model_data [--source-dir PATH]
 
-analyzer/outputs/(metrics.json, viz_전처리완료.csv, predictions_sample_*.csv,
-platform_price_comparison.csv, platform_price_tests.csv, gmm_price_clusters.csv)를
-읽어 price_model_* 테이블에 적재한다. 재학습마다 통째로 다시 뽑는 배치 산출물이라
-증분 갱신 대신 테이블별로 전량 truncate 후 재적재한다(멱등 — 몇 번을 다시 돌려도
-결과가 같음).
+analyzer가 핸드오프용으로 모아두는 outputs/viz/ 폴더(metrics.json,
+price_distribution.csv, feature_importance_{full,no_leak_prone}.csv,
+predictions_{full,no_leak_prone}.csv, platform_comparison.csv,
+platform_tests.csv, gmm_clusters.csv)를 읽어 price_model_* 테이블에 적재한다.
+재학습마다 통째로 다시 뽑는 배치 산출물이라 증분 갱신 대신 테이블별로 전량
+truncate 후 재적재한다(멱등 — 몇 번을 다시 돌려도 결과가 같음).
 
 --source-dir 기본값은 이 리포지토리와 analyzer/가 형제 디렉터리로 나란히 있다는
 전제(현재 모노레포 레이아웃)의 상대경로다. 두 리포지토리가 완전히 분리 배포되면
-그때 가서 산출물을 이 스크립트가 읽을 수 있는 고정 경로에 복사해두거나 인자로 넘기면 된다.
+그때 가서 outputs/viz/를 이 스크립트가 읽을 수 있는 고정 경로에 복사해두거나
+인자로 넘기면 된다.
 """
 import argparse
 import csv
@@ -20,6 +22,7 @@ from pathlib import Path
 from app.core.db import SessionLocal
 from app.models.price_model import (
     PriceCluster,
+    PriceFeatureImportance,
     PriceModelListing,
     PriceModelMetric,
     PricePlatformComparison,
@@ -27,7 +30,7 @@ from app.models.price_model import (
     PricePrediction,
 )
 
-DEFAULT_SOURCE_DIR = Path(__file__).resolve().parents[2] / "analyzer" / "outputs"
+DEFAULT_SOURCE_DIR = Path(__file__).resolve().parents[2] / "analyzer" / "outputs" / "viz"
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -73,7 +76,7 @@ def seed_metrics(db, source_dir: Path) -> int:
 
 
 def seed_listings(db, source_dir: Path) -> int:
-    rows = _read_csv(source_dir / "viz_전처리완료.csv")
+    rows = _read_csv(source_dir / "price_distribution.csv")
     db.query(PriceModelListing).delete()
     for row in rows:
         db.add(
@@ -98,11 +101,29 @@ def seed_listings(db, source_dir: Path) -> int:
     return len(rows)
 
 
+def seed_feature_importance(db, source_dir: Path) -> int:
+    db.query(PriceFeatureImportance).delete()
+    total = 0
+    for feature_set in ("full", "no_leak_prone"):
+        rows = _read_csv(source_dir / f"feature_importance_{feature_set}.csv")
+        for row in rows:
+            db.add(
+                PriceFeatureImportance(
+                    feature_set=feature_set,
+                    feature=row["feature"],
+                    gain=float(row["gain"]),
+                    split=_to_int(row["split"]),
+                )
+            )
+            total += 1
+    return total
+
+
 def seed_predictions(db, source_dir: Path) -> int:
     db.query(PricePrediction).delete()
     total = 0
     for feature_set in ("full", "no_leak_prone"):
-        rows = _read_csv(source_dir / f"predictions_sample_{feature_set}.csv")
+        rows = _read_csv(source_dir / f"predictions_{feature_set}.csv")
         for row in rows:
             db.add(
                 PricePrediction(
@@ -120,7 +141,7 @@ def seed_predictions(db, source_dir: Path) -> int:
 
 
 def seed_platform_comparisons(db, source_dir: Path) -> int:
-    rows = _read_csv(source_dir / "platform_price_comparison.csv")
+    rows = _read_csv(source_dir / "platform_comparison.csv")
     db.query(PricePlatformComparison).delete()
     for row in rows:
         db.add(
@@ -139,7 +160,7 @@ def seed_platform_comparisons(db, source_dir: Path) -> int:
 
 
 def seed_platform_tests(db, source_dir: Path) -> int:
-    rows = _read_csv(source_dir / "platform_price_tests.csv")
+    rows = _read_csv(source_dir / "platform_tests.csv")
     db.query(PricePlatformTest).delete()
     for row in rows:
         db.add(
@@ -158,7 +179,7 @@ def seed_platform_tests(db, source_dir: Path) -> int:
 
 
 def seed_clusters(db, source_dir: Path) -> int:
-    rows = _read_csv(source_dir / "gmm_price_clusters.csv")
+    rows = _read_csv(source_dir / "gmm_clusters.csv")
     db.query(PriceCluster).delete()
     for row in rows:
         db.add(
@@ -180,6 +201,7 @@ def seed(source_dir: Path) -> None:
     try:
         print(f"metrics: {seed_metrics(db, source_dir)}건")
         print(f"listings: {seed_listings(db, source_dir)}건")
+        print(f"feature_importance: {seed_feature_importance(db, source_dir)}건")
         print(f"predictions: {seed_predictions(db, source_dir)}건")
         print(f"platform_comparisons: {seed_platform_comparisons(db, source_dir)}건")
         print(f"platform_tests: {seed_platform_tests(db, source_dir)}건")
@@ -198,7 +220,7 @@ if __name__ == "__main__":
         "--source-dir",
         type=Path,
         default=DEFAULT_SOURCE_DIR,
-        help=f"analyzer 산출물 디렉터리 (기본값: {DEFAULT_SOURCE_DIR})",
+        help=f"analyzer 핸드오프 디렉터리 (기본값: {DEFAULT_SOURCE_DIR})",
     )
     args = parser.parse_args()
     seed(args.source_dir)
