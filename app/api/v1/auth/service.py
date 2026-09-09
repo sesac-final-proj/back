@@ -294,15 +294,37 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
 
 
 def update_profile(db: Session, user: User, payload: ProfileUpdateRequest) -> User:
-    # 인증 없이 그냥 수집 — exclude_unset이라 요청에 안 담긴 필드는 건드리지 않는다
-    # (예: 사진만 다시 올릴 때 전화번호가 None으로 지워지는 걸 방지).
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "phone_number" in updates:
+        phone = updates["phone_number"]
+        if phone:
+            phone = phone.strip()
+            if not phone:
+                phone = None
+            else:
+                existing_user = db.scalar(
+                    select(User).where(User.phone_number == phone, User.id != user.id)
+                )
+                if existing_user:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="이미 등록된 전화번호입니다.",
+                    )
+        updates["phone_number"] = phone
+
+    for field, value in updates.items():
         setattr(user, field, value)
+
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 전화번호입니다.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 등록된 전화번호입니다.",
+        ) from exc
+
     db.refresh(user)
     return user
 
