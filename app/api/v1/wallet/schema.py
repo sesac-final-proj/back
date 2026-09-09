@@ -11,6 +11,15 @@ class PaymentCreateRequest(BaseModel):
     amount: int = Field(gt=0)
 
 
+class ChargeCreateRequest(BaseModel):
+    amount: int = Field(gt=0)
+
+
+class QrPayRequest(BaseModel):
+    merchant_name: str
+    amount: int = Field(gt=0)
+
+
 class PaymentDetailResponse(BaseModel):
     """상세내역 화면(9-2. 거래한 사람/일시/충전금액/거래후잔액)용.
 

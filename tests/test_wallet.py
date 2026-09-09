@@ -55,6 +55,28 @@ def main():
     try:
         assert seller.wallet_balance == 100000 and buyer.wallet_balance == 100000  # 가입 시 초기 지급
 
+        # 충전 — 계좌 연동 없는 mock, 잔액만 그대로 올라간다.
+        charged = wallet_service.charge_wallet(db, buyer, 20000)
+        assert charged.balance == 120000
+        db.refresh(buyer)
+        assert buyer.wallet_balance == 120000
+
+        # QR 결제 — 가맹점도 mock이라 이름 문자열만 받고 잔액만 차감한다.
+        from app.api.v1.wallet.schema import QrPayRequest
+
+        paid = wallet_service.pay_by_qr(db, buyer, QrPayRequest(merchant_name="테스트카페", amount=5000))
+        assert paid.balance == 115000
+        db.refresh(buyer)
+        assert buyer.wallet_balance == 115000
+
+        try:
+            wallet_service.pay_by_qr(db, buyer, QrPayRequest(merchant_name="테스트카페", amount=999999))
+            raise AssertionError("잔액 부족인데 QR 결제되면 안 된다")
+        except AppError:
+            pass
+        db.refresh(buyer)
+        assert buyer.wallet_balance == 115000  # 실패한 시도는 잔액 안 건드림
+
         product = trade_service.create_product(
             db, seller, ProductCreateRequest(title="지갑테스트상품", category="기타", desired_price=30000)
         )
@@ -84,22 +106,22 @@ def main():
         except AppError:
             pass
         db.refresh(buyer)
-        assert buyer.wallet_balance == 100000  # 실패한 시도는 잔액 안 건드림
+        assert buyer.wallet_balance == 115000  # 실패한 시도는 잔액 안 건드림
 
         # 정상 송금
         message = wallet_service.send_payment(db, buyer, room.id, PaymentCreateRequest(amount=30000))
         assert message.message_type == "PAYMENT"
         assert message.payment is not None
         assert message.payment.amount == 30000
-        assert message.payment.balance_after == 70000
+        assert message.payment.balance_after == 85000
 
         db.refresh(buyer)
         db.refresh(seller)
-        assert buyer.wallet_balance == 70000
+        assert buyer.wallet_balance == 85000
         assert seller.wallet_balance == 130000
 
         wallet_tx = db.get(WalletTransaction, message.payment.transaction_id)
-        assert wallet_tx.balance_after == 70000
+        assert wallet_tx.balance_after == 85000
         assert wallet_tx.sender_id == buyer.id and wallet_tx.receiver_id == seller.id
 
         # 상품 거래상태 자동 SOLD 전환 (문서 결정사항)
@@ -118,7 +140,7 @@ def main():
         # 상세내역: 당사자만 조회 가능, 관점에 따라 is_sender가 뒤집힌다
         buyer_view = wallet_service.get_payment_detail(db, buyer, wallet_tx.id)
         assert buyer_view.is_sender is True and buyer_view.counterpart_nickname == "wallet_seller"
-        assert buyer_view.amount == 30000 and buyer_view.balance_after == 70000
+        assert buyer_view.amount == 30000 and buyer_view.balance_after == 85000
 
         seller_view = wallet_service.get_payment_detail(db, seller, wallet_tx.id)
         assert seller_view.is_sender is False and seller_view.counterpart_nickname == "wallet_buyer"
@@ -134,7 +156,7 @@ def main():
         payment_items = [m for m in page.items if m.message_type == "PAYMENT"]
         assert len(payment_items) == 1
         assert payment_items[0].payment.amount == 30000
-        assert payment_items[0].payment.balance_after == 70000
+        assert payment_items[0].payment.balance_after == 85000
 
         # 일반 메시지 API로는 PAYMENT 타입을 위조할 수 없다 (스키마 레벨에서 거부)
         from app.api.v1.chats.schema import MessageCreateRequest
