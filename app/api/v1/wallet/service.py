@@ -15,6 +15,27 @@ def get_balance(user: User) -> schema.WalletBalanceResponse:
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
 
 
+# ponytail: 실제 계좌 자동충전 연동은 스코프 밖(docs/carrot-pay-trade-flow-plan.md 6절) —
+# 은행 계좌 검증 없이 잔액만 그대로 올려준다. 송금과 달리 상대가 없어 wallet_transactions에
+# 남길 것도 없으니 잔액만 갱신.
+def charge_wallet(db: Session, user: User, amount: int) -> schema.WalletBalanceResponse:
+    user.wallet_balance += amount
+    db.commit()
+    db.refresh(user)
+    return schema.WalletBalanceResponse(balance=user.wallet_balance)
+
+
+# ponytail: QR 결제도 charge_wallet과 같은 이유로 mock — 가맹점은 DB에 없는 이름 문자열일
+# 뿐이라 wallet_transactions에 남길 상대(receiver)가 없다. 잔액 차감만 한다.
+def pay_by_qr(db: Session, user: User, data: schema.QrPayRequest) -> schema.WalletBalanceResponse:
+    if user.wallet_balance < data.amount:
+        raise AppError("잔액이 부족합니다.")
+    user.wallet_balance -= data.amount
+    db.commit()
+    db.refresh(user)
+    return schema.WalletBalanceResponse(balance=user.wallet_balance)
+
+
 def send_payment(
     db: Session, user: User, chat_room_id: int, data: schema.PaymentCreateRequest
 ) -> chat_schema.MessageResponse:

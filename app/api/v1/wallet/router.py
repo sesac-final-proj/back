@@ -29,6 +29,24 @@ def send_payment(
     return service.send_payment(db, user, chat_room_id, body)
 
 
+@router.post("/charge", response_model=schema.WalletBalanceResponse)
+def charge_wallet(
+    body: schema.ChargeCreateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.charge_wallet(db, user, body.amount)
+
+
+@router.post("/pay", response_model=schema.WalletBalanceResponse)
+def pay_by_qr(
+    body: schema.QrPayRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.pay_by_qr(db, user, body)
+
+
 @router.get("/transactions/{transaction_id}", response_model=schema.PaymentDetailResponse)
 def get_payment_detail(
     transaction_id: int,
