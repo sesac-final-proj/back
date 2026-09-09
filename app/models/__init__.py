@@ -16,6 +16,7 @@ from app.models.product import Product  # noqa: F401
 from app.models.recently_viewed import RecentlyViewedProduct  # noqa: F401
 from app.models.region import Region  # noqa: F401
 from app.models.report import Report  # noqa: F401
+from app.models.support import SupportInquiry, SupportInquiryMessage, SupportInquiryStatus  # noqa: F401
 from app.models.transaction import Transaction  # noqa: F401
 from app.models.user import RefreshToken, SocialAccount, SocialProvider, User, UserRole  # noqa: F401
 from app.models.user_region import UserRegion  # noqa: F401
