@@ -15,6 +15,7 @@ from app.models.recently_viewed import RecentlyViewedProduct
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.wallet import WalletTransaction
 
 
 def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -> Product:
@@ -114,6 +115,8 @@ def list_products(
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
+        # 작성자가 탈퇴한 글(auth/service.py withdraw_account가 세팅) — 피드/검색엔 항상 숨긴다.
+        .filter(Product.deleted_at.is_(None))
     )
     if region_id is not None:
         query = query.filter(Product.region_id == region_id)
@@ -169,6 +172,17 @@ def get_product_detail(db: Session, product_id: int, user: User | None = None) -
         db.query(func.count(ProductFavorite.id)).filter(ProductFavorite.product_id == product.id).scalar()
     )
     item = _to_list_item(product, dong_name, chat_count or 0, favorite_count or 0)
+
+    # 크롤링 seed 데이터는 seller_nickname이 원문 그대로 박혀있지만, 실제로 앱에서
+    # 로그인해서 올린 글은 이 컬럼을 안 채워서 항상 null이었다 — 그래서 프론트가
+    # 매번 "주황가지님" 플레이스홀더로 표시됨. created_by가 있으면(=실사용자 글)
+    # 그 유저의 현재 닉네임을 우선한다 — 닉네임을 나중에 바꿔도 항상 최신값으로 보임.
+    seller_nickname = product.seller_nickname
+    if product.created_by is not None:
+        seller = db.get(User, product.created_by)
+        if seller is not None:
+            seller_nickname = seller.nickname
+
     return schema.ProductDetailResponse(
         **item.model_dump(),
         category=product.category,
@@ -176,7 +190,7 @@ def get_product_detail(db: Session, product_id: int, user: User | None = None) -
         search_keyword=product.search_keyword,
         description=product.description,
         trade_place=product.trade_place,
-        seller_nickname=product.seller_nickname,
+        seller_nickname=seller_nickname,
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None
         ),
@@ -262,7 +276,7 @@ def list_my_favorites(db: Session, user: User, page: int, size: int) -> schema.P
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
-        .filter(ProductFavorite.user_id == user.id)
+        .filter(ProductFavorite.user_id == user.id, Product.deleted_at.is_(None))
     )
     total = query.count()
     rows = (
@@ -328,7 +342,7 @@ def list_recently_viewed(db: Session, user: User) -> schema.RecentlyViewedRespon
         .join(Region, Product.region_id == Region.id)
         .outerjoin(chat_count_subq, chat_count_subq.c.product_id == Product.id)
         .outerjoin(favorite_count_subq, favorite_count_subq.c.product_id == Product.id)
-        .filter(RecentlyViewedProduct.user_id == user.id)
+        .filter(RecentlyViewedProduct.user_id == user.id, Product.deleted_at.is_(None))
     )
     total = query.count()
     rows = query.order_by(RecentlyViewedProduct.viewed_at.desc()).limit(RECENTLY_VIEWED_LIMIT).all()
@@ -349,8 +363,25 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
     if product.image_object_key:
         storage.delete_object(product.image_object_key)
     db.query(ProductFavorite).filter(ProductFavorite.product_id == product_id).delete()
+    # "최근 본" 기록은 개인 열람 이력일 뿐이라 상품이 없어지면 같이 지운다
+    # (ChatRoom과 달리 nullable FK가 아니라서 끊는 게 아니라 삭제).
+    db.query(RecentlyViewedProduct).filter(RecentlyViewedProduct.product_id == product_id).delete()
+    # 가격분석(create_analysis)은 분석 전용 임시 상품을 만들어 1:1로 물고 있어서
+    # (Analysis.product_id NOT NULL, 끊을 수 없음) 상품과 같이 지운다.
+    analysis_ids = [
+        row[0] for row in db.query(Analysis.id).filter(Analysis.product_id == product_id).all()
+    ]
+    if analysis_ids:
+        db.query(AnalysisResult).filter(AnalysisResult.analysis_id.in_(analysis_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Analysis).filter(Analysis.id.in_(analysis_ids)).delete(synchronize_session=False)
     # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
     db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
+    # 송금 기록(당근페이)도 돈이 실제로 오간 이력이라 보존, 참조만 끊는다.
+    db.query(WalletTransaction).filter(WalletTransaction.product_id == product_id).update(
+        {WalletTransaction.product_id: None}
+    )
     db.delete(product)
     db.commit()
 

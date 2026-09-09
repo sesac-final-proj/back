@@ -9,11 +9,18 @@ from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.product import Product
 from app.models.region import Region
 from app.models.user import User
+from app.models.wallet import WalletTransaction
 
 _STATUS_MESSAGES = {
     "SALE": "판매중으로 변경했어요",
     "RESERVED": "예약중으로 변경했어요",
     "SOLD": "거래가 완료되었어요",
+}
+
+# TEXT는 content를 그대로 last_message로 쓰고, 그 외 타입은 고정 문구.
+_LAST_MESSAGE_BY_TYPE = {
+    "IMAGE": "사진을 보냈습니다",
+    "PAYMENT": "당근페이로 송금을 보냈어요",
 }
 
 
@@ -31,7 +38,7 @@ def create_chat_room(db: Session, user: User, data: schema.ChatRoomCreateRequest
         raise AppError("TRADE 타입 채팅방만 아직 지원합니다.")
 
     product = db.get(Product, data.product_id)
-    if product is None:
+    if product is None or product.deleted_at is not None:
         raise NotFoundError("상품을 찾을 수 없습니다.")
     if product.created_by == user.id:
         raise AppError("본인 상품에는 채팅을 걸 수 없습니다.")
@@ -164,7 +171,16 @@ def list_my_chat_rooms(
     return schema.ChatRoomListResponse(items=items, total=total)
 
 
-def _to_message_response(message: ChatMessage) -> schema.MessageResponse:
+def _to_message_response(
+    message: ChatMessage, payment: tuple[int, int] | None = None
+) -> schema.MessageResponse:
+    """payment는 (amount, balance_after) 튜플 — message.payment_id가 있을 때만 채운다."""
+    payment_info = None
+    if message.payment_id is not None and payment is not None:
+        amount, balance_after = payment
+        payment_info = schema.MessagePaymentInfo(
+            transaction_id=message.payment_id, amount=amount, balance_after=balance_after
+        )
     return schema.MessageResponse(
         id=message.id,
         chat_room_id=message.chat_room_id,
@@ -172,6 +188,7 @@ def _to_message_response(message: ChatMessage) -> schema.MessageResponse:
         message_type=message.message_type,
         content=message.content,
         image_url=storage.public_url(message.image_object_key) if message.image_object_key else None,
+        payment=payment_info,
         created_at=message.created_at,
     )
 
@@ -183,6 +200,7 @@ def _post_message(
     message_type: str = "TEXT",
     content: str | None = None,
     image_object_key: str | None = None,
+    payment_id: int | None = None,
 ) -> ChatMessage:
     message = ChatMessage(
         chat_room_id=room.id,
@@ -190,11 +208,12 @@ def _post_message(
         message_type=message_type,
         content=content,
         image_object_key=image_object_key,
+        payment_id=payment_id,
     )
     db.add(message)
     db.flush()  # message.created_at 확보
 
-    room.last_message = content if message_type == "TEXT" else "사진을 보냈습니다"
+    room.last_message = content if message_type == "TEXT" else _LAST_MESSAGE_BY_TYPE.get(message_type, content)
     room.last_message_at = message.created_at
 
     # 실시간 push는 범위 밖(REST 폴링 전제) — 발신자를 제외한 참여자의 안읽음만 증가.
@@ -300,5 +319,15 @@ def list_messages(db: Session, user: User, chat_room_id: int, page: int, size: i
     participant.unread_count = 0
     db.commit()
 
-    items = [_to_message_response(m) for m in rows]
+    payment_ids = [m.payment_id for m in rows if m.payment_id is not None]
+    payments_by_id: dict[int, tuple[int, int]] = {}
+    if payment_ids:
+        payments_by_id = {
+            tx_id: (amount, balance_after)
+            for tx_id, amount, balance_after in db.query(
+                WalletTransaction.id, WalletTransaction.amount, WalletTransaction.balance_after
+            ).filter(WalletTransaction.id.in_(payment_ids))
+        }
+
+    items = [_to_message_response(m, payment=payments_by_id.get(m.payment_id)) for m in rows]
     return schema.MessageListResponse(items=items, total=total)

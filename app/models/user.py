@@ -38,6 +38,9 @@ class User(Base):
     # 활동동네는 단일 FK (docs/ERD.md 0절) — 다건 필요해지면 UserRegion 매핑 테이블로 분리.
     region_id: Mapped[int | None] = mapped_column(ForeignKey("regions.id"), nullable=True)
     radius_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 당근페이 mock 잔액 — 실제 계좌 연동 없이 가입 시 초기 지급액으로 시작해서
+    # app.api.v1.wallet 송금 API끼리만 증감시킨다.
+    wallet_balance: Mapped[int] = mapped_column(Integer, default=100000, server_default="100000")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     region = relationship("Region")

@@ -22,6 +22,7 @@ from app.api.v1.auth.schema import (
     UserRegionItem,
     UserRegionListResponse,
     UserRegionUpdateRequest,
+    WithdrawRequest,
 )
 from app.core.config import settings
 from app.core.db import get_db
@@ -97,6 +98,15 @@ def delete_my_region(
     db: Session = Depends(get_db),
 ):
     service.remove_user_region(db, user, region_id)
+
+
+@router.delete("/me")
+def withdraw(
+    payload: WithdrawRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.withdraw_account(db, user, payload.refresh_token)
 
 
 @router.get("/me/summary", response_model=MeSummaryResponse)

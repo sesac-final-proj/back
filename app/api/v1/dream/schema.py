@@ -31,15 +31,22 @@ class FacilityItem(BaseModel):
     address: str
     phone: str | None = None
     homepage_url: str | None = None
+    established_date: str | None = None
+    operation_status: str | None = None
     lat: float | None = None
     lng: float | None = None
+    total_score: int | None = None
+    district_rank: int | None = None
+    is_representative: bool = False
+    is_selected: bool = False
+    checklist: dict[str, str] | None = None
 
 
 class FacilityListResponse(BaseModel):
     items: list[FacilityItem]
     total: int
     geocoded_count: int
-    source: Literal["seoul_open_data", "seoul_sample"]
+    source: Literal["csv", "json_412", "seoul_open_data", "seoul_sample"]
     notice: str | None = None
 
 

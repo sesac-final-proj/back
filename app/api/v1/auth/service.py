@@ -30,8 +30,12 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.block import UserBlock
+from app.models.favorite import ProductFavorite
+from app.models.product import Product
+from app.models.recently_viewed import RecentlyViewedProduct
 from app.models.region import Region
-from app.models.user import SocialAccount, User, UserRole
+from app.models.user import RefreshToken, SocialAccount, User, UserRole
 from app.models.user_region import UserRegion
 
 # PRD MVP는 "영등포-노원-송파 활동동네 및 거래반경 설정"까지만 요구 — 다건 등록은
@@ -115,6 +119,45 @@ def logout(db: Session, refresh_token: str) -> dict:
 
     revoke_refresh_token(payload["jti"])
     return {"message": "로그아웃되었습니다."}
+
+
+def withdraw_account(db: Session, user: User, refresh_token: str | None) -> dict:
+    """회원 탈퇴. 본인만 보는 데이터(찜/최근본/동네/소셜연동/차단목록)는 완전 삭제하고,
+    다른 유저와 얽힌 데이터(채팅/판매글)는 지우지 않는다 — 채팅방이나 판매글을 지우면
+    상대방 쪽 대화 기록/거래 내역까지 같이 깨지기 때문. 대신 유저 row는 남기되 로그인
+    불가능한 상태로 익명화해서, 이후 어디서든(채팅/판매글) 닉네임을 조회하면 자동으로
+    "탈퇴회원"으로 보이게 한다 (get_product_detail의 seller_nickname 조회와 동일한 패턴).
+    작성한 판매글은 deleted_at을 찍어 피드/검색에서만 숨기고, 이미 연결된 채팅방에서는
+    (get_product_detail이 deleted_at을 안 보므로) 계속 조회 가능하게 남긴다.
+    """
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token)
+            revoke_refresh_token(payload["jti"])
+        except jwt.PyJWTError:
+            pass
+
+    db.query(RefreshToken).filter(RefreshToken.user_id == user.id).delete()
+    db.query(SocialAccount).filter(SocialAccount.user_id == user.id).delete()
+    db.query(ProductFavorite).filter(ProductFavorite.user_id == user.id).delete()
+    db.query(RecentlyViewedProduct).filter(RecentlyViewedProduct.user_id == user.id).delete()
+    db.query(UserRegion).filter(UserRegion.user_id == user.id).delete()
+    db.query(UserBlock).filter(
+        (UserBlock.blocker_id == user.id) | (UserBlock.blocked_id == user.id)
+    ).delete(synchronize_session=False)
+    db.query(Product).filter(Product.created_by == user.id).update(
+        {Product.deleted_at: datetime.now(timezone.utc)}, synchronize_session=False
+    )
+
+    user.nickname = f"탈퇴회원{user.id}"
+    user.email = f"withdrawn-{user.id}@withdrawn.local"
+    user.password_hash = None
+    user.phone_number = None
+    user.profile_image_url = None
+    user.region_id = None
+    user.radius_m = None
+    db.commit()
+    return {"message": "탈퇴가 완료되었습니다."}
 
 
 def _resolve_region(db: Session, region_id: int | None, dong_code: str | None) -> Region:
@@ -251,15 +294,37 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
 
 
 def update_profile(db: Session, user: User, payload: ProfileUpdateRequest) -> User:
-    # 인증 없이 그냥 수집 — exclude_unset이라 요청에 안 담긴 필드는 건드리지 않는다
-    # (예: 사진만 다시 올릴 때 전화번호가 None으로 지워지는 걸 방지).
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "phone_number" in updates:
+        phone = updates["phone_number"]
+        if phone:
+            phone = phone.strip()
+            if not phone:
+                phone = None
+            else:
+                existing_user = db.scalar(
+                    select(User).where(User.phone_number == phone, User.id != user.id)
+                )
+                if existing_user:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="이미 등록된 전화번호입니다.",
+                    )
+        updates["phone_number"] = phone
+
+    for field, value in updates.items():
         setattr(user, field, value)
+
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 전화번호입니다.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 등록된 전화번호입니다.",
+        ) from exc
+
     db.refresh(user)
     return user
 

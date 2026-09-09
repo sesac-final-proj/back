@@ -59,11 +59,14 @@ class ChatRoomStatusUpdateRequest(BaseModel):
     trade_status: ChatTradeStatus
 
 
-MessageType = Literal["TEXT", "IMAGE"]
+MessageType = Literal["TEXT", "IMAGE", "PAYMENT"]
+# PAYMENT는 app.api.v1.wallet의 송금 API를 통해서만 생성된다 — 돈이 오가는 메시지를
+# 일반 메시지 API로 위조 못 하게, 생성 요청 스키마에는 아예 이 값을 허용하지 않는다.
+CreatableMessageType = Literal["TEXT", "IMAGE"]
 
 
 class MessageCreateRequest(BaseModel):
-    message_type: MessageType = "TEXT"
+    message_type: CreatableMessageType = "TEXT"
     content: str | None = None
     image_object_key: str | None = None
 
@@ -76,6 +79,13 @@ class MessageCreateRequest(BaseModel):
         return self
 
 
+class MessagePaymentInfo(BaseModel):
+    transaction_id: int
+    amount: int
+    # 송금한 사람(sender) 기준 거래 후 잔액.
+    balance_after: int
+
+
 class MessageResponse(BaseModel):
     id: int
     chat_room_id: int
@@ -83,6 +93,9 @@ class MessageResponse(BaseModel):
     message_type: MessageType
     content: str | None
     image_url: str | None = None
+    # message_type == "PAYMENT"일 때만 채워짐 — 프론트가 이 값 하나로 송금 카드
+    # 버블/상세화면을 그린다(별도 상세 API 호출 없음).
+    payment: MessagePaymentInfo | None = None
     created_at: datetime
 
 

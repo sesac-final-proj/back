@@ -1,0 +1,467 @@
+{
+  "asOf": "2026-09-08T13:25:07.779925+00:00",
+  "population": {
+    "rows": 4913,
+    "platforms": 2,
+    "items": 6,
+    "completedRows": 2826
+  },
+  "readerGuide": [
+    {
+      "question": "무엇을 비교하나",
+      "answer": "같은 품목·모델·규격의 양 플랫폼 중앙값과 가운데 50% 가격대"
+    },
+    {
+      "question": "왜 중앙값인가",
+      "answer": "비정상 고가·저가가 평균을 끌어당기는 영향을 줄이기 위해서"
+    },
+    {
+      "question": "어떻게 쓰나",
+      "answer": "실제 등록가를 중앙값·IQR과 비교한 뒤 모델 예측은 보조 신호로 교차 확인"
+    }
+  ],
+  "selectionReasons": [
+    "완제품 중고 매물만 포함하고 부품·장난감·삽니다·가격협의성 매물은 전처리에서 제외",
+    "세부 페이지로 모델 미상을 보강하고 product_id 중복을 제거",
+    "동일 품목 안에서도 모델·용량·연식·가격 근접성을 기준으로 비교 클러스터를 분리",
+    "평균만 제시하지 않고 중앙값·IQR·이상치 비율을 함께 노출"
+  ],
+  "distributions": [
+    {
+      "item": "쿠쿠 밥솥",
+      "count": 1614,
+      "q1": 45000,
+      "median": 70000,
+      "q3": 129750,
+      "outlierRate": 6.3,
+      "interpretation": "가운데 50%는 45,000~129,750원입니다. 대표 시세는 평균보다 중앙값 70,000원을 우선합니다."
+    },
+    {
+      "item": "메디큐브 부스터 프로",
+      "count": 1217,
+      "q1": 100000,
+      "median": 160000,
+      "q3": 205000,
+      "outlierRate": 2.1,
+      "interpretation": "가운데 50%는 100,000~205,000원입니다. 대표 시세는 평균보다 중앙값 160,000원을 우선합니다."
+    },
+    {
+      "item": "다이슨 청소기",
+      "count": 967,
+      "q1": 51000,
+      "median": 132000,
+      "q3": 274000,
+      "outlierRate": 5.8,
+      "interpretation": "가운데 50%는 51,000~274,000원입니다. 대표 시세는 평균보다 중앙값 132,000원을 우선합니다."
+    },
+    {
+      "item": "풀리오 마사지기",
+      "count": 716,
+      "q1": 59750,
+      "median": 73000,
+      "q3": 100000,
+      "outlierRate": 9.2,
+      "interpretation": "가운데 50%는 59,750~100,000원입니다. 대표 시세는 평균보다 중앙값 73,000원을 우선합니다."
+    },
+    {
+      "item": "미닉스 음식물처리기",
+      "count": 274,
+      "q1": 260000,
+      "median": 310000,
+      "q3": 340000,
+      "outlierRate": 2.9,
+      "interpretation": "가운데 50%는 260,000~340,000원입니다. 대표 시세는 평균보다 중앙값 310,000원을 우선합니다."
+    },
+    {
+      "item": "브레짜 분유",
+      "count": 125,
+      "q1": 90000,
+      "median": 160000,
+      "q3": 210000,
+      "outlierRate": 0.8,
+      "interpretation": "가운데 50%는 90,000~210,000원입니다. 대표 시세는 평균보다 중앙값 160,000원을 우선합니다."
+    }
+  ],
+  "keywords": [
+    {
+      "keyword": "쿠쿠",
+      "count": 1353,
+      "medianPrice": 70000,
+      "medianIndex": 66.7,
+      "completionRate": 54.8
+    },
+    {
+      "keyword": "메디큐브",
+      "count": 1204,
+      "medianPrice": 160000,
+      "medianIndex": 152.4,
+      "completionRate": 56.5
+    },
+    {
+      "keyword": "다이슨",
+      "count": 813,
+      "medianPrice": 140000,
+      "medianIndex": 133.3,
+      "completionRate": 57.9
+    },
+    {
+      "keyword": "풀리오",
+      "count": 703,
+      "medianPrice": 73000,
+      "medianIndex": 69.5,
+      "completionRate": 64.7
+    },
+    {
+      "keyword": "부스터프로",
+      "count": 683,
+      "medianPrice": 165000,
+      "medianIndex": 157.1,
+      "completionRate": 61.6
+    },
+    {
+      "keyword": "마사지기",
+      "count": 669,
+      "medianPrice": 75000,
+      "medianIndex": 71.4,
+      "completionRate": 65.0
+    },
+    {
+      "keyword": "프로",
+      "count": 503,
+      "medianPrice": 150000,
+      "medianIndex": 142.9,
+      "completionRate": 49.5
+    },
+    {
+      "keyword": "6인용",
+      "count": 503,
+      "medianPrice": 70000,
+      "medianIndex": 66.7,
+      "completionRate": 61.2
+    },
+    {
+      "keyword": "에이지알",
+      "count": 479,
+      "medianPrice": 170000,
+      "medianIndex": 161.9,
+      "completionRate": 53.0
+    },
+    {
+      "keyword": "부스터",
+      "count": 461,
+      "medianPrice": 150000,
+      "medianIndex": 142.9,
+      "completionRate": 48.6
+    },
+    {
+      "keyword": "압력밥솥",
+      "count": 458,
+      "medianPrice": 60000,
+      "medianIndex": 57.1,
+      "completionRate": 57.4
+    },
+    {
+      "keyword": "청소기",
+      "count": 436,
+      "medianPrice": 120000,
+      "medianIndex": 114.3,
+      "completionRate": 54.6
+    },
+    {
+      "keyword": "10인용",
+      "count": 427,
+      "medianPrice": 85000,
+      "medianIndex": 81.0,
+      "completionRate": 61.4
+    },
+    {
+      "keyword": "crp",
+      "count": 347,
+      "medianPrice": 90000,
+      "medianIndex": 85.7,
+      "completionRate": 55.9
+    },
+    {
+      "keyword": "밥솥",
+      "count": 328,
+      "medianPrice": 76950,
+      "medianIndex": 73.3,
+      "completionRate": 52.4
+    },
+    {
+      "keyword": "무선청소기",
+      "count": 294,
+      "medianPrice": 139000,
+      "medianIndex": 132.4,
+      "completionRate": 64.6
+    },
+    {
+      "keyword": "ih",
+      "count": 284,
+      "medianPrice": 75000,
+      "medianIndex": 71.4,
+      "completionRate": 53.2
+    },
+    {
+      "keyword": "미닉스",
+      "count": 272,
+      "medianPrice": 310000,
+      "medianIndex": 295.2,
+      "completionRate": 64.3
+    }
+  ],
+  "examples": [
+    {
+      "item": "다이슨 청소기",
+      "title": "깨끗하게 세척한 다이슨 무선 청소기 V8(33분 연속동작)",
+      "platform": "번개장터",
+      "price": 132000,
+      "status": "판매중",
+      "model": "V8",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://m.bunjang.co.kr/products/426159491"
+    },
+    {
+      "item": "다이슨 청소기",
+      "title": "다이슨 V8 무선 청소기",
+      "platform": "중고나라",
+      "price": 130000,
+      "status": "판매중",
+      "model": "V8",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://web.joongna.com/product/231834854"
+    },
+    {
+      "item": "메디큐브 부스터 프로",
+      "title": "(미개봉 새제품) 메디큐브 AGE-R 부스터 프로 블랙",
+      "platform": "번개장터",
+      "price": 160000,
+      "status": "판매중",
+      "model": "BOOSTER_PRO",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://m.bunjang.co.kr/products/422624150"
+    },
+    {
+      "item": "메디큐브 부스터 프로",
+      "title": "메디큐브 부스터 프로 헬로키티 에디션",
+      "platform": "중고나라",
+      "price": 160000,
+      "status": "판매중",
+      "model": "BOOSTER_PRO",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://web.joongna.com/product/230438671"
+    },
+    {
+      "item": "미닉스 음식물처리기",
+      "title": "미닉스 더플랜더 맥스 음식물처리기 (최상)",
+      "platform": "번개장터",
+      "price": 310000,
+      "status": "판매중",
+      "model": "THE_PLENDER_MAX",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://m.bunjang.co.kr/products/424216328"
+    },
+    {
+      "item": "미닉스 음식물처리기",
+      "title": "미닉스 맥스 음식물처리기",
+      "platform": "중고나라",
+      "price": 310000,
+      "status": "판매중",
+      "model": "THE_PLENDER",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://web.joongna.com/product/231727101"
+    },
+    {
+      "item": "브레짜 분유",
+      "title": "브레짜 분유제조기",
+      "platform": "중고나라",
+      "price": 160000,
+      "status": "판매완료",
+      "model": "FORMULA_PRO",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://web.joongna.com/product/229242299"
+    },
+    {
+      "item": "브레짜 분유",
+      "title": "26년1월구매) 베이비브레짜 자동 분유제조기",
+      "platform": "번개장터",
+      "price": 150000,
+      "status": "판매완료",
+      "model": "FORMULA_PRO",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://m.bunjang.co.kr/products/419735206"
+    },
+    {
+      "item": "쿠쿠 밥솥",
+      "title": "쿠쿠 전기IH압력밥솥 6인용 음성기능 저렴하게 구입하세요",
+      "platform": "번개장터",
+      "price": 70000,
+      "status": "판매중",
+      "model": "IH압력밥솥_6인용",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://m.bunjang.co.kr/products/424664976"
+    },
+    {
+      "item": "쿠쿠 밥솥",
+      "title": "쿠쿠 10인용 압력밥솥",
+      "platform": "중고나라",
+      "price": 70000,
+      "status": "판매중",
+      "model": "전기압력밥솥_10인용",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://web.joongna.com/product/231896918"
+    },
+    {
+      "item": "풀리오 마사지기",
+      "title": "풀리오 종아리 마사지기 판매합니다.",
+      "platform": "번개장터",
+      "price": 73000,
+      "status": "판매중",
+      "model": "CALF",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://m.bunjang.co.kr/products/424557937"
+    },
+    {
+      "item": "풀리오 마사지기",
+      "title": "미개봉새상품 정품)풀리오 목어깨 마사지기 V2(선물가능)",
+      "platform": "중고나라",
+      "price": 73000,
+      "status": "판매완료",
+      "model": "NECK_SHOULDER_V2",
+      "reason": "품목 중앙값에 가장 가까워 극단값 영향을 줄인 실제 대표 사례",
+      "url": "https://web.joongna.com/product/227625458"
+    }
+  ],
+  "sourceValidation": {
+    "sources": [
+      {
+        "id": "elecmart",
+        "name": "번개장터",
+        "kind": "외부 크롤링 CSV",
+        "status": "검증 완료",
+        "rows": 2064,
+        "pricedRows": 2064,
+        "modelKnownRate": 100.0,
+        "duplicateIds": 0,
+        "datedRate": 100.0
+      },
+      {
+        "id": "joonggonara",
+        "name": "중고나라",
+        "kind": "외부 크롤링 CSV",
+        "status": "검증 완료",
+        "rows": 2849,
+        "pricedRows": 2849,
+        "modelKnownRate": 100.0,
+        "duplicateIds": 0,
+        "datedRate": 100.0
+      }
+    ],
+    "futureSlots": [
+      {
+        "id": "future-marketplace",
+        "name": "추가 외부 중고거래 데이터",
+        "status": "연결 예정",
+        "description": "동일 CSV 계약과 품질 검증을 통과한 뒤 비교군에 포함"
+      },
+      {
+        "id": "future-internal",
+        "name": "당근 내부 거래 데이터",
+        "status": "연결 예정",
+        "description": "수집 권한과 지표 정의 확정 전에는 분석 결과에 포함하지 않음"
+      }
+    ],
+    "acceptance": [
+      "가격 파싱 가능",
+      "상품 ID 중복 제거",
+      "모델·규격 식별",
+      "수집일 확인",
+      "완제품 필터 통과"
+    ]
+  },
+  "llmCategories": [
+    {
+      "name": "주방 가사 가전",
+      "definition": "조리 및 음식물 처리와 관련된 주방용 전자기기 품목군",
+      "signals": [
+        "쿠쿠",
+        "압력밥솥",
+        "6인용",
+        "10인용",
+        "미닉스",
+        "음식물처리기",
+        "더플랜더"
+      ],
+      "adminUse": "주방가전 세부 속성(용량, 모델명) 분류 및 품목별 대표 중앙값 시세 모니터링",
+      "caution": "쿠쿠 밥솥(중앙값 70,000원)과 미닉스 음식물처리기(중앙값 310,000원)의 가격대 차이가 크므로 단일 시세로 합산하지 않고 품목별로 분리 관리 필요"
+    },
+    {
+      "name": "개인 뷰티 및 바디 케어 기기",
+      "definition": "피부 관리 및 신체 마사지 기능을 제공하는 개인용 헬스·뷰티 디바이스 품목군",
+      "signals": [
+        "메디큐브",
+        "부스터프로",
+        "에이지알",
+        "부스터",
+        "풀리오",
+        "마사지기",
+        "목어깨",
+        "종아리"
+      ],
+      "adminUse": "부위별 마사지기 및 피부 미용 기기 관련 검색 키워드 사전 매핑 및 거래 완료율 모니터링",
+      "caution": "풀리오 마사지기의 이상치 비율이 9.2%로 나타나므로 기준 시세 범위를 벗어난 데이터에 대한 별도 확인 필요"
+    },
+    {
+      "name": "생활 청소 가전",
+      "definition": "실내 청소 및 환경 관리를 위한 무선 청소기 및 관련 부속 품목군",
+      "signals": [
+        "다이슨",
+        "청소기",
+        "무선 청소기",
+        "V8",
+        "세척"
+      ],
+      "adminUse": "세부 모델명(V8 등) 및 세척 상태, 연속 동작 시간 등 제목 내 표기 정보에 대한 메타데이터 관리",
+      "caution": "중간 50% 가격 구간(Q1 51,000원 ~ Q3 274,000원)의 폭이 넓게 분포되어 있으므로 상태 표기에 따른 가격 분포 모니터링 필요"
+    },
+    {
+      "name": "영유아 수유 전문 가전",
+      "definition": "자동 조유 및 유아 수유 관리를 위한 전문 육아 전자기기 품목군",
+      "signals": [
+        "브레짜",
+        "베이비브레짜",
+        "분유",
+        "분유제조기",
+        "자동 분유제조기"
+      ],
+      "adminUse": "육아용품 전용 카테고리 분류 및 구매 시점 표기 데이터 관리",
+      "caution": "전체 집계 건수가 125건으로 타 품목 대비 적게 나타나므로 등록 데이터 규모의 지속적인 추적 관리 필요"
+    },
+    {
+      "name": "미개봉 및 에디션 상품",
+      "definition": "미개봉 새제품 상태이거나 특정 캐릭터 콜라보레이션 에디션으로 등록된 품목군",
+      "signals": [
+        "미개봉 새제품",
+        "미개봉새상품",
+        "정품",
+        "헬로키티 에디션",
+        "선물가능"
+      ],
+      "adminUse": "제목 내 미개봉 및 에디션 키워드 탐지를 통한 상품 상태 플래그 부여 및 분류 필터링",
+      "caution": "미개봉 및 한정 에디션 상품의 특성을 고려하여 일반 사용 품목과 구분하여 가격 분포를 모니터링해야 함"
+    }
+  ],
+  "llm": {
+    "mode": "llm",
+    "provider": "OmniRoute",
+    "model": "gemini-3.7-flash-high",
+    "generatedAt": "2026-09-08T13:25:07.778928+00:00",
+    "scope": "집계 통계·키워드·비식별 공개 매물 제목의 의미 라벨링",
+    "guardrail": "가격 계산은 통계 파이프라인이 수행하며 LLM은 카테고리명과 해석만 생성"
+  },
+  "interpretation": {
+    "finding": "가격 분포가 넓은 품목은 하나의 평균가보다 모델·규격 클러스터의 중앙값이 등록가 비교에 더 적합합니다.",
+    "action": "관리자는 이상치 비율과 실제 대표 매물을 먼저 확인하고, LLM 카테고리는 탐색·검수 우선순위에 사용해야 합니다.",
+    "caveat": "판매완료 표시는 실제 결제가격이나 판매기간을 보장하지 않으므로 회전율은 관측 상태 비율로만 해석합니다."
+  }
+}
