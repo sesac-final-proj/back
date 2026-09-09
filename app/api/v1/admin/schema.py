@@ -120,6 +120,51 @@ class KeywordInsight(BaseModel):
     completionRate: float
 
 
+class ProductClusterInsight(BaseModel):
+    cluster: str
+    item: str
+    model: str
+    condition: str
+    count: int
+    median: int
+    q1: int
+    q3: int
+    platformCount: int
+    completedRate: float
+    sampleCount: int | None = None
+    medianPrice: int | None = None
+    iqr: int | None = None
+    dispersion: float | None = None
+    productFamily: str | None = None
+    normalizedModel: str | None = None
+    productSignature: str | None = None
+    qualityStatus: str | None = "reliable"
+
+
+class ModelQualityInsight(BaseModel):
+    selectedModel: str = "RandomForest"
+    r2: float = 0.5000
+    mae: int = 56597
+    baselineR2: float = -0.1704
+    baselineMAE: int = 89595
+    validationMethod: str = "시간순 80/20 홀드아웃 및 Group/Random 분할 검증"
+    trainCount: int = 3816
+    testCount: int = 955
+
+
+class DataQualityInsight(BaseModel):
+    rowsBeforeCleaning: int = 6234
+    rowsAfterCleaning: int = 4771
+    removedRows: int = 1463
+    removedRate: float = 23.47
+    invalidPriceRows: int = 259
+    accessoryRows: int = 793
+    sparseClusterRate: float = 80.6
+    noisyClusterRate: float = 7.9
+    totalClusters: int = 624
+    reliableClusters: int = 38
+
+
 class ListingExample(BaseModel):
     item: str
     title: str
@@ -161,21 +206,24 @@ class FutureSourceSlot(BaseModel):
 class SourceValidation(BaseModel):
     sources: list[SourceValidationItem]
     futureSlots: list[FutureSourceSlot]
-    acceptance: list[str]
+    acceptance: list[str] = Field(default_factory=list)
 
 
 class AudienceInsightsResponse(BaseModel):
     asOf: datetime
     population: dict[str, int]
-    readerGuide: list[ReaderGuideItem]
-    selectionReasons: list[str]
-    distributions: list[DistributionInsight]
-    keywords: list[KeywordInsight]
-    examples: list[ListingExample]
+    modelQuality: ModelQualityInsight | None = None
+    dataQuality: DataQualityInsight | None = None
+    readerGuide: list[ReaderGuideItem] = Field(default_factory=list)
+    selectionReasons: list[str] = Field(default_factory=list)
+    distributions: list[DistributionInsight] = Field(default_factory=list)
+    productClusters: list[ProductClusterInsight] = Field(default_factory=list)
+    keywords: list[KeywordInsight] = Field(default_factory=list)
+    examples: list[ListingExample] = Field(default_factory=list)
     sourceValidation: SourceValidation
-    llmCategories: list[LlmCategory]
-    llm: dict[str, str]
-    interpretation: dict[str, str]
+    llmCategories: list[LlmCategory] = Field(default_factory=list)
+    llm: dict[str, str] = Field(default_factory=dict)
+    interpretation: dict[str, str] = Field(default_factory=dict)
 
 
 class DreamDistrictSummary(BaseModel):
@@ -202,7 +250,6 @@ class DreamStatusResponse(BaseModel):
 
 
 NoticeStatus = Literal["draft", "published", "hidden"]
-
 
 class NoticeListItem(BaseModel):
     model_config = {"from_attributes": True}
