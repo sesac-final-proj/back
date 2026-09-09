@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,11 @@ def data_status(
     db: Session = Depends(get_db),
 ):
     return service.get_data_status(db)
+
+
+@router.get("/dashboard/overview", response_model=schema.DashboardOverview)
+def dashboard_overview(range: Literal["14d"] = "14d", db: Session = Depends(get_db)):
+    return service.get_dashboard_overview(db)
 
 
 @router.get("/audience-insights", response_model=schema.AudienceInsightsResponse)

@@ -60,4 +60,10 @@ def test_data_status_aggregates_live_trade_rows():
     assert result.region_counts[0].region_name == "영등포구 당산동"
     assert {item.category for item in result.category_counts} == {"청소기", "밥솥"}
     assert result.recent_transactions[0].product_title in {"다이슨 청소기", "쿠쿠 밥솥"}
-    assert result.recent_errors == []
+    assert result.average_price == 180_000
+    assert result.unmatched_region_transactions == 1
+    assert sum(item.transaction_count for item in result.status_counts) == 2
+    assert len(result.daily_counts) == 14
+    assert sum(item.transaction_count for item in result.price_band_counts) == 1
+    assert len(result.recent_errors) == 1
+    assert "지역 매칭 실패" in result.recent_errors[0].message

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.pagination import Page
 
@@ -20,6 +20,24 @@ class CategoryDataCount(BaseModel):
     error_count: int = 0
     error_rate: float = 0.0
     transaction_count: int = 0
+    priced_count: int = 0
+    completed_count: int = 0
+    average_price: int | None = None
+
+
+class StatusDataCount(BaseModel):
+    status: str
+    transaction_count: int
+
+
+class DailyTransactionCount(BaseModel):
+    date: date
+    transaction_count: int
+
+
+class PriceBandCount(BaseModel):
+    label: str
+    transaction_count: int
 
 
 class RecentTransactionItem(BaseModel):
@@ -44,10 +62,38 @@ class DataStatusResponse(BaseModel):
     priced_transactions: int
     region_count: int
     latest_collected_at: datetime | None
+    average_price: int | None = None
+    unmatched_region_transactions: int = 0
+    status_counts: list[StatusDataCount] = Field(default_factory=list)
+    daily_counts: list[DailyTransactionCount] = Field(default_factory=list)
+    price_band_counts: list[PriceBandCount] = Field(default_factory=list)
     region_counts: list[RegionDataCount]
     category_counts: list[CategoryDataCount]
-    recent_transactions: list[RecentTransactionItem] = []
-    recent_errors: list[CollectionErrorItem] = []
+    recent_transactions: list[RecentTransactionItem] = Field(default_factory=list)
+    recent_errors: list[CollectionErrorItem] = Field(default_factory=list)
+
+
+class DashboardSummary(BaseModel):
+    total_transactions: int
+    price_eligible_transactions: int
+    price_eligible_rate: float
+    active_regions: int
+    average_listing_price: int | None
+
+
+class DashboardSource(BaseModel):
+    name: str
+    status: Literal["available", "empty"]
+    last_collected_at: datetime | None
+
+
+class DashboardOverview(BaseModel):
+    summary: DashboardSummary
+    collection_trend: list[DailyTransactionCount]
+    trade_status: list[StatusDataCount]
+    region_ranking: list[RegionDataCount]
+    source: DashboardSource
+    recent_transactions: list[RecentTransactionItem]
 
 
 class ReaderGuideItem(BaseModel):
