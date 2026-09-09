@@ -17,7 +17,7 @@ from app.models.favorite import ProductFavorite
 from app.models.product import Product
 from app.models.region import Region
 from app.models.user import User, UserRole
-from app.models.wallet import WalletTransaction
+from app.models.wallet import Store, WalletTransaction
 
 
 def main():
@@ -61,21 +61,40 @@ def main():
         db.refresh(buyer)
         assert buyer.wallet_balance == 120000
 
-        # QR 결제 — 가맹점도 mock이라 이름 문자열만 받고 잔액만 차감한다.
+        # QR 결제 — 가맹점(Store)도 mock 등록이라 이름만 있고, 잔액만 차감한다.
         from app.api.v1.wallet.schema import QrPayRequest
 
-        paid = wallet_service.pay_by_qr(db, buyer, QrPayRequest(merchant_name="테스트카페", amount=5000))
+        store = Store(name="테스트카페")
+        db.add(store)
+        db.commit()
+        db.refresh(store)
+
+        paid = wallet_service.pay_by_qr(db, buyer, QrPayRequest(store_id=store.id, amount=5000))
         assert paid.balance == 115000
         db.refresh(buyer)
         assert buyer.wallet_balance == 115000
 
         try:
-            wallet_service.pay_by_qr(db, buyer, QrPayRequest(merchant_name="테스트카페", amount=999999))
+            wallet_service.pay_by_qr(db, buyer, QrPayRequest(store_id=store.id, amount=999999))
             raise AssertionError("잔액 부족인데 QR 결제되면 안 된다")
         except AppError:
             pass
         db.refresh(buyer)
         assert buyer.wallet_balance == 115000  # 실패한 시도는 잔액 안 건드림
+
+        try:
+            wallet_service.pay_by_qr(db, buyer, QrPayRequest(store_id=-1, amount=1000))
+            raise AssertionError("없는 가맹점 결제는 404여야 한다")
+        except NotFoundError:
+            pass
+
+        # 꿈방울 적립 — 일반결제(QR) 1% (5,000원 * 1% = 50)
+        from app.api.v1.dream import service as dream_service
+
+        points = dream_service.get_point_balance(db, buyer, page=1, size=20)
+        assert points.balance == 50
+        assert points.transactions.items[0].source == "general_payment"
+        assert points.transactions.items[0].amount == 50
 
         product = trade_service.create_product(
             db, seller, ProductCreateRequest(title="지갑테스트상품", category="기타", desired_price=30000)
@@ -119,6 +138,16 @@ def main():
         db.refresh(seller)
         assert buyer.wallet_balance == 85000
         assert seller.wallet_balance == 130000
+
+        # 꿈방울 적립 — 중고거래 0.1% (30,000원 * 0.1% = 30), 앞서 쌓인 50과 합산 80
+        points_after_trade = dream_service.get_point_balance(db, buyer, page=1, size=20)
+        assert points_after_trade.balance == 80
+        trade_point = next(t for t in points_after_trade.transactions.items if t.source == "trade")
+        assert trade_point.amount == 30 and trade_point.related_id == message.payment.transaction_id
+
+        # 5,000원 미만 중고거래는 적립 대상 아님 — 0을 반환하고 세션에 아무것도 안 남긴다
+        # (award_points 내부에서 db.add 전에 걸러짐, 별도 방/상품 없이 함수만 직접 호출해 확인).
+        assert dream_service.award_points(db, buyer.id, 4999, "trade") == 0
 
         wallet_tx = db.get(WalletTransaction, message.payment.transaction_id)
         assert wallet_tx.balance_after == 85000

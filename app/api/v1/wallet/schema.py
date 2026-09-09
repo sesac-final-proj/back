@@ -15,8 +15,17 @@ class ChargeCreateRequest(BaseModel):
     amount: int = Field(gt=0)
 
 
+class StoreResponse(BaseModel):
+    id: int
+    name: str
+
+
+class StoreCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
 class QrPayRequest(BaseModel):
-    merchant_name: str
+    store_id: int
     amount: int = Field(gt=0)
 
 
