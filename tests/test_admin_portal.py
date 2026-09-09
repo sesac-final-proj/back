@@ -61,6 +61,7 @@ def test_overview_empty_and_date_window(portal):
     assert result.summary.average_listing_price == 50
     assert result.summary.active_regions == 1
     assert sum(row.transaction_count for row in result.collection_trend) == 2
+    assert sum(row.transaction_count for row in result.price_distribution) == 2
     assert result.collection_trend[0].date == today - timedelta(days=13)
     assert result.collection_trend[-1].date == today
     assert result.region_ranking[0].region_name == "송파구 문정동"

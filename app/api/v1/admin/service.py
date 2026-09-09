@@ -43,6 +43,7 @@ def get_dashboard_overview(db: Session) -> schema.DashboardOverview:
         ) for i in range(14)],
         trade_status=data.status_counts,
         region_ranking=data.region_counts[:5],
+        price_distribution=data.price_band_counts,
         source=schema.DashboardSource(name="당근 수집 거래", status="available" if data.total_transactions else "empty", last_collected_at=data.latest_collected_at),
         recent_transactions=data.recent_transactions,
     )

@@ -92,6 +92,7 @@ class DashboardOverview(BaseModel):
     collection_trend: list[DailyTransactionCount]
     trade_status: list[StatusDataCount]
     region_ranking: list[RegionDataCount]
+    price_distribution: list[PriceBandCount]
     source: DashboardSource
     recent_transactions: list[RecentTransactionItem]
 
