@@ -141,9 +141,81 @@ def _rows(district: str) -> tuple[list[dict], str]:
 
 def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
     district = district.strip()
+    if district not in DISTRICT_SERVICES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 자치구입니다.")
+
     centers_412 = _load_412_centers()
     default_lat, default_lng = DISTRICT_DEFAULT_COORDS.get(district, (37.5665, 126.9780))
 
+    # 1. Open API 조회 시도 (API 키가 유효하거나 mock 등으로 응답이 존재할 때)
+    try:
+        rows, source = _rows(district)
+        child_rows = [
+            row
+            for row in rows
+            if "아동" in f"{row.get('FCLT_KIND_NM', '')} {row.get('FCLT_KIND_DTL_NM', '')}"
+            and district in str(row.get("FCLT_ADDR") or "")
+        ][:limit]
+
+        if child_rows:
+            items = []
+            for i, row in enumerate(child_rows):
+                name = str(row.get("FCLT_NM") or "").strip()
+                address = str(row.get("FCLT_ADDR") or "").strip()
+                coordinate = _geocode(address)
+                if coordinate:
+                    lat, lng = coordinate
+                else:
+                    offset_lat = (i % 5) * 0.0015
+                    offset_lng = ((i // 5) % 5) * 0.0015
+                    lat, lng = default_lat + offset_lat, default_lng + offset_lng
+
+                identity = str(row.get("FCLT_CD") or f"{name}|{address}")
+                homepage_url = next(
+                    (
+                        str(row.get(key)).strip()
+                        for key in ("FCLT_HMPG", "FCLT_HMPG_URL", "FCLT_HOME_URL", "HOMEPAGE")
+                        if row.get(key)
+                    ),
+                    None,
+                )
+                if not homepage_url and row.get("FCLT_CD"):
+                    homepage_url = (
+                        "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/"
+                        f"BD_selectFcltyInfoManage.do?q_fcltyId={quote(str(row['FCLT_CD']), safe='')}&q_fclty=1003"
+                    )
+                if not homepage_url:
+                    homepage_url = OFFICIAL_FACILITY_URL
+
+                items.append(
+                    schema.FacilityItem(
+                        id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
+                        name=name,
+                        district=district,
+                        facility_type=str(row.get("FCLT_KIND_NM") or "아동복지시설").strip(),
+                        address=address,
+                        phone=str(row.get("FCLT_TEL_NO") or "").strip() or None,
+                        homepage_url=homepage_url,
+                        operation_status=str(row.get("FCLT_STATUS_NM") or "").strip() or None,
+                        lat=lat,
+                        lng=lng,
+                    )
+                )
+
+            return schema.FacilityListResponse(
+                items=items,
+                total=len(items),
+                geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
+                source=source,
+                notice="서울 열린데이터 샘플 5건만 조회합니다." if source == "seoul_sample" else None,
+            )
+    except HTTPException as e:
+        if e.status_code == 400:
+            raise
+    except Exception:
+        pass
+
+    # 2. Fallback to CSV
     csv_rows = _csv_rows(district)
     if csv_rows:
         items = []
@@ -163,12 +235,10 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                     lat, lng = None, None
 
             if lat is None or lng is None:
-                # Provide small offset for display so multiple markers don't collapse completely
                 offset_lat = (i % 5) * 0.0015
                 offset_lng = ((i // 5) % 5) * 0.0015
                 lat, lng = default_lat + offset_lat, default_lng + offset_lng
 
-            # Find matching homepage URL from 412 centers if available
             match_412 = next(
                 (c for c in centers_412 if c.get("district") == district and (c.get("name") in name or name in c.get("name"))),
                 None,
@@ -197,7 +267,7 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
             notice="서울특별시 아동복지시설 정보 CSV 기준입니다.",
         )
 
-    # Fallback to parsed JSON centers (e.g. for districts like 송파구 that are not in CSV)
+    # 3. Fallback to parsed JSON centers (e.g. for districts like 송파구 that are not in CSV)
     parsed_centers = _load_parsed_centers().get(district, [])
     if parsed_centers:
         items = []
@@ -244,64 +314,11 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
             notice="서울특별시 412개 아동복지 센터 데이터 기준입니다.",
         )
 
-    # Open API fallback
-    rows, source = _rows(district)
-    child_rows = [
-        row
-        for row in rows
-        if "아동" in f"{row.get('FCLT_KIND_NM', '')} {row.get('FCLT_KIND_DTL_NM', '')}"
-        and district in str(row.get("FCLT_ADDR") or "")
-    ][:limit]
-
-    items = []
-    for i, row in enumerate(child_rows):
-        name = str(row.get("FCLT_NM") or "").strip()
-        address = str(row.get("FCLT_ADDR") or "").strip()
-        coordinate = _geocode(address)
-        if coordinate:
-            lat, lng = coordinate
-        else:
-            offset_lat = (i % 5) * 0.0015
-            offset_lng = ((i // 5) % 5) * 0.0015
-            lat, lng = default_lat + offset_lat, default_lng + offset_lng
-
-        identity = str(row.get("FCLT_CD") or f"{name}|{address}")
-        homepage_url = next(
-            (
-                str(row.get(key)).strip()
-                for key in ("FCLT_HMPG", "FCLT_HMPG_URL", "FCLT_HOME_URL", "HOMEPAGE")
-                if row.get(key)
-            ),
-            None,
-        )
-        if not homepage_url and row.get("FCLT_CD"):
-            homepage_url = (
-                "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/"
-                f"BD_selectFcltyInfoManage.do?q_fcltyId={quote(str(row['FCLT_CD']), safe='')}&q_fclty=1003"
-            )
-        if not homepage_url:
-            homepage_url = OFFICIAL_FACILITY_URL
-
-        items.append(
-            schema.FacilityItem(
-                id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
-                name=name,
-                district=district,
-                facility_type=str(row.get("FCLT_KIND_NM") or "아동복지시설").strip(),
-                address=address,
-                phone=str(row.get("FCLT_TEL_NO") or "").strip() or None,
-                homepage_url=homepage_url,
-                operation_status=str(row.get("FCLT_STATUS_NM") or "").strip() or None,
-                lat=lat,
-                lng=lng,
-            )
-        )
-
     return schema.FacilityListResponse(
-        items=items,
-        total=len(items),
-        geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
-        source=source,
-        notice="서울 열린데이터 샘플 5건만 조회합니다." if source == "seoul_sample" else None,
+        items=[],
+        total=0,
+        geocoded_count=0,
+        source="none",
+        notice="해당 자치구의 아동복지시설 정보를 찾을 수 없습니다.",
     )
 
