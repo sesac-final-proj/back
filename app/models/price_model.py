@@ -62,6 +62,23 @@ class PriceModelListing(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class PriceFeatureImportance(Base):
+    """feature_importance_{feature_set}.csv 한 행 — LightGBM 피처 중요도(gain/split).
+
+    기존엔 PNG(feature_importance_full.png 등)로만 저장돼 수치를 못 뽑았다가,
+    train.py의 save_feature_importance()가 CSV도 같이 남기도록 고쳐서 생긴 테이블 —
+    Chart.js horizontal bar 등에 쓸 수 있게 gain/split을 그대로 보존한다.
+    """
+
+    __tablename__ = "price_feature_importances"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    feature_set: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    feature: Mapped[str] = mapped_column(String(100), nullable=False)
+    gain: Mapped[float] = mapped_column(Float, nullable=False)
+    split: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class PricePrediction(Base):
     """predictions_sample_{feature_set}.csv 한 행 — 실제가 vs 예측가 산점도용 샘플."""
 

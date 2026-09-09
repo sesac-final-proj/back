@@ -67,6 +67,11 @@ def main():
         assert len(charts.platform_comparisons) > 0
         assert len(charts.platform_tests) > 0
         assert len(charts.clusters) > 0
+        assert len(charts.feature_importance) > 0
+        assert {f.feature_set for f in charts.feature_importance} == {"full", "no_leak_prone"}
+        # gain 내림차순 정렬(피처세트별) — Chart.js horizontal bar가 바로 쓸 수 있게.
+        full_gains = [f.gain for f in charts.feature_importance if f.feature_set == "full"]
+        assert full_gains == sorted(full_gains, reverse=True)
 
         # HTTP 레벨 — require_admin 게이트(일반 유저 403, 관리자 200) + 스키마 대략 확인.
         client = TestClient(app)

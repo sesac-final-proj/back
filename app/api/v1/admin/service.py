@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.admin import schema
 from app.models.price_model import (
     PriceCluster,
+    PriceFeatureImportance,
     PriceModelListing,
     PriceModelMetric,
     PricePlatformComparison,
@@ -380,8 +381,9 @@ def get_price_distribution(
 
 
 def get_price_model_charts(db: Session) -> schema.PriceModelChartsResponse:
-    """산점도(예측vs실제)/플랫폼비교/유의성검정/가격군집 — 전부 소규모 스냅샷이라
-    페이지네이션 없이 한 번에 묶어서 내려준다(기존 admin/data-status와 같은 패턴)."""
+    """산점도(예측vs실제)/플랫폼비교/유의성검정/가격군집/피처중요도 — 전부 소규모
+    스냅샷이라 페이지네이션 없이 한 번에 묶어서 내려준다(기존 admin/data-status와
+    같은 패턴)."""
     predictions = db.query(PricePrediction).order_by(PricePrediction.feature_set, PricePrediction.id).all()
     comparisons = (
         db.query(PricePlatformComparison)
@@ -390,10 +392,16 @@ def get_price_model_charts(db: Session) -> schema.PriceModelChartsResponse:
     )
     tests = db.query(PricePlatformTest).order_by(PricePlatformTest.category).all()
     clusters = db.query(PriceCluster).order_by(PriceCluster.category, PriceCluster.median_price).all()
+    feature_importance = (
+        db.query(PriceFeatureImportance)
+        .order_by(PriceFeatureImportance.feature_set, PriceFeatureImportance.gain.desc())
+        .all()
+    )
 
     return schema.PriceModelChartsResponse(
         predictions=[schema.PricePredictionItem.model_validate(r) for r in predictions],
         platform_comparisons=[schema.PricePlatformComparisonItem.model_validate(r) for r in comparisons],
         platform_tests=[schema.PricePlatformTestItem.model_validate(r) for r in tests],
         clusters=[schema.PriceClusterItem.model_validate(r) for r in clusters],
+        feature_importance=[schema.PriceFeatureImportanceItem.model_validate(r) for r in feature_importance],
     )
