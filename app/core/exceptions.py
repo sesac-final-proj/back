@@ -24,7 +24,7 @@ class PermissionDeniedError(AppError):
 
 
 def _error_body(code: str, message: str) -> dict:
-    return {"code": code, "message": message}
+    return {"code": code, "message": message, "detail": message}
 
 
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
