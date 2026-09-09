@@ -1,9 +1,24 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+
+
+class Store(Base):
+    """QR 현장결제 대상 가맹점 — 실제 가맹점 연동 없이 이름만 등록해두는 mock.
+
+    어드민이 등록하면(POST /wallet/stores) 그 id로 "<프론트도메인>/carrot?pay=<id>"
+    URL을 QR로 인쇄해 매장에 비치한다. 손님 앱은 그 QR을 스캔(또는 URL 진입)해서
+    id로 이름을 조회(GET /wallet/stores/{id})하고 금액을 입력해 결제한다.
+    """
+
+    __tablename__ = "stores"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class WalletTransaction(Base):
