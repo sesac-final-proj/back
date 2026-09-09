@@ -23,3 +23,8 @@ def data_status(
 @router.get("/audience-insights", response_model=schema.AudienceInsightsResponse)
 def audience_insights():
     return service.get_audience_insights()
+
+
+@router.get("/dream-status", response_model=schema.DreamStatusResponse)
+def dream_status():
+    return service.get_dream_status()

@@ -92,6 +92,31 @@ class LlmCategory(BaseModel):
     caution: str
 
 
+class SourceValidationItem(BaseModel):
+    id: str
+    name: str
+    kind: str
+    status: str
+    rows: int
+    pricedRows: int
+    modelKnownRate: float
+    duplicateIds: int
+    datedRate: float
+
+
+class FutureSourceSlot(BaseModel):
+    id: str
+    name: str
+    status: str
+    description: str
+
+
+class SourceValidation(BaseModel):
+    sources: list[SourceValidationItem]
+    futureSlots: list[FutureSourceSlot]
+    acceptance: list[str]
+
+
 class AudienceInsightsResponse(BaseModel):
     asOf: datetime
     population: dict[str, int]
@@ -100,9 +125,33 @@ class AudienceInsightsResponse(BaseModel):
     distributions: list[DistributionInsight]
     keywords: list[KeywordInsight]
     examples: list[ListingExample]
+    sourceValidation: SourceValidation
     llmCategories: list[LlmCategory]
     llm: dict[str, str]
     interpretation: dict[str, str]
+
+
+class DreamDistrictSummary(BaseModel):
+    district: str
+    facilityCount: int
+    source: str
+
+
+class DreamFacilityTypeSummary(BaseModel):
+    facilityType: str
+    count: int
+
+
+class DreamStatusResponse(BaseModel):
+    totalFacilities: int
+    coveredDistricts: int
+    configuredDistricts: int
+    districts: list[DreamDistrictSummary]
+    facilityTypes: list[DreamFacilityTypeSummary]
+    sourceFiles: list[str]
+    donationDataConnected: bool
+    donationMetricStatus: str
+    limitations: list[str]
 
 
 NoticeStatus = Literal["draft", "published", "hidden"]
