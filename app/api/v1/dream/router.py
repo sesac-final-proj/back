@@ -19,8 +19,8 @@ def list_facilities(
 
 @router.get("/points", response_model=schema.PointBalanceResponse)
 def get_points(
-    page: int = 1,
-    size: int = 20,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
