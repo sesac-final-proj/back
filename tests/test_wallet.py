@@ -52,6 +52,7 @@ def main():
 
     product_id = None
     room_id = None
+    store_id = None
     try:
         assert seller.wallet_balance == 100000 and buyer.wallet_balance == 100000  # 가입 시 초기 지급
 
@@ -68,6 +69,7 @@ def main():
         db.add(store)
         db.commit()
         db.refresh(store)
+        store_id = store.id
 
         paid = wallet_service.pay_by_qr(db, buyer, QrPayRequest(store_id=store.id, amount=5000))
         assert paid.balance == 115000
@@ -206,6 +208,8 @@ def main():
         if product_id is not None:
             db.query(ProductFavorite).filter_by(product_id=product_id).delete()
             db.query(Product).filter_by(id=product_id).delete()
+        if store_id is not None:
+            db.query(Store).filter_by(id=store_id).delete()
         db.delete(seller)
         db.delete(buyer)
         db.delete(stranger)
