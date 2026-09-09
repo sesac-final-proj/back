@@ -79,6 +79,13 @@ class MessageCreateRequest(BaseModel):
         return self
 
 
+class MessagePaymentInfo(BaseModel):
+    transaction_id: int
+    amount: int
+    # 송금한 사람(sender) 기준 거래 후 잔액.
+    balance_after: int
+
+
 class MessageResponse(BaseModel):
     id: int
     chat_room_id: int
@@ -86,10 +93,9 @@ class MessageResponse(BaseModel):
     message_type: MessageType
     content: str | None
     image_url: str | None = None
-    # message_type == "PAYMENT"일 때만 채워짐 — 채팅방 리스트에서 카드 렌더링용.
-    # 상세(거래한 사람/일시/거래후잔액 등)는 GET /api/v1/wallet/transactions/{id}에서.
-    payment_id: int | None = None
-    payment_amount: int | None = None
+    # message_type == "PAYMENT"일 때만 채워짐 — 프론트가 이 값 하나로 송금 카드
+    # 버블/상세화면을 그린다(별도 상세 API 호출 없음).
+    payment: MessagePaymentInfo | None = None
     created_at: datetime
 
 
