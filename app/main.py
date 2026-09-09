@@ -13,6 +13,7 @@ from app.api.v1.local.router import router as local_router
 from app.api.v1.nicknames.router import router as nicknames_router
 from app.api.v1.real_estate.router import router as real_estate_router
 from app.api.v1.safety.router import router as safety_router
+from app.api.v1.support.router import router as support_router
 from app.api.v1.trades.router import router as trades_router
 from app.api.v1.wallet.router import router as wallet_router
 from app.core.config import settings
@@ -60,6 +61,7 @@ app.include_router(legacy_auth_router)
 app.include_router(nicknames_router)
 app.include_router(real_estate_router)
 app.include_router(safety_router)
+app.include_router(support_router)
 app.include_router(wallet_router)
 
 
