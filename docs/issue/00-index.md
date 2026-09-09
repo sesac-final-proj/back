@@ -19,6 +19,7 @@
 | 7 | [08-buyer-ai.md](08-buyer-ai.md) | 구매자AI | BA-01 1순위 / BA-02 2순위 | |
 | 8 | [09-backlog-2nd-3rd.md](09-backlog-2nd-3rd.md) | 전 EPIC 2·3순위 | 2/3순위 | 플랫폼 비교, 재판매가, 기부 관리 등 |
 | 9 | [11-multi-region.md](11-multi-region.md) | 회원관리(확장) | 2순위 | 활동동네 1개 → 최대 2개, `UserRegion` 매핑 테이블 (ERD.md 설계 결정 1번 항목의 후속) |
+| 10 | [12-price-prediction-dashboard.md](12-price-prediction-dashboard.md) | 어드민(가격모델) | 2순위 | analyzer 파이프라인 산출물을 어드민 "가격 모델" 섹션에 연결 |
 
 ## 사용 방법
 
