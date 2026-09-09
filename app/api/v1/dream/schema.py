@@ -35,6 +35,11 @@ class FacilityItem(BaseModel):
     operation_status: str | None = None
     lat: float | None = None
     lng: float | None = None
+    total_score: int | None = None
+    district_rank: int | None = None
+    is_representative: bool = False
+    is_selected: bool = False
+    checklist: dict[str, str] | None = None
 
 
 class FacilityListResponse(BaseModel):

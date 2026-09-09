@@ -77,6 +77,110 @@ JSON_PARSED_PATH = PROJECT_ROOT / "all_districts_parsed.json"
 OFFICIAL_FACILITY_URL = "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/BD_selectFcltyInfoManage.do"
 
 
+def _facility_trust_checklist(
+    *,
+    name: str,
+    address: str,
+    phone: str | None,
+    homepage_url: str | None,
+    operation_status: str | None,
+    lat: float | None,
+    lng: float | None,
+    matched_official_center: bool,
+) -> dict[str, str]:
+    return {
+        "name": "시설명 확인" if name else "시설명 누락",
+        "address": "주소 확인" if address else "주소 누락",
+        "phone": "전화번호 확인" if phone else "전화번호 미확인",
+        "homepage": "공식 상세 링크 확인" if homepage_url and homepage_url != OFFICIAL_FACILITY_URL else "공식 목록 링크",
+        "operation": "운영 상태 확인" if operation_status else "운영 상태 미확인",
+        "coordinate": "좌표 확인" if lat is not None and lng is not None else "좌표 미확인",
+        "official_match": "412개 전처리 시설과 매칭" if matched_official_center else "전처리 매칭 없음",
+    }
+
+
+def _facility_trust_score(checklist: dict[str, str]) -> int:
+    weights = {
+        "name": 12,
+        "address": 18,
+        "phone": 12,
+        "homepage": 12,
+        "operation": 14,
+        "coordinate": 18,
+        "official_match": 14,
+    }
+    positive = {
+        "name": "확인",
+        "address": "확인",
+        "phone": "확인",
+        "homepage": "확인",
+        "operation": "확인",
+        "coordinate": "확인",
+        "official_match": "매칭",
+    }
+    return sum(weight for key, weight in weights.items() if positive[key] in checklist.get(key, ""))
+
+
+def _rank_trusted_facilities(items: list[schema.FacilityItem]) -> list[schema.FacilityItem]:
+    ranked = sorted(
+        items,
+        key=lambda item: (
+            -(item.total_score or 0),
+            item.name,
+            item.address,
+        ),
+    )
+    rank_by_id = {item.id: index + 1 for index, item in enumerate(ranked)}
+    selected_ids = {item.id for item in ranked[:2]}
+    for item in items:
+        item.district_rank = rank_by_id.get(item.id)
+        item.is_representative = item.id in selected_ids
+        item.is_selected = item.id in selected_ids
+    return items
+
+
+def _build_facility_item(
+    *,
+    identity: str,
+    name: str,
+    district: str,
+    facility_type: str,
+    address: str,
+    phone: str | None = None,
+    homepage_url: str | None = None,
+    established_date: str | None = None,
+    operation_status: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    matched_official_center: bool = False,
+) -> schema.FacilityItem:
+    checklist = _facility_trust_checklist(
+        name=name,
+        address=address,
+        phone=phone,
+        homepage_url=homepage_url,
+        operation_status=operation_status,
+        lat=lat,
+        lng=lng,
+        matched_official_center=matched_official_center,
+    )
+    return schema.FacilityItem(
+        id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
+        name=name,
+        district=district,
+        facility_type=facility_type,
+        address=address,
+        phone=phone,
+        homepage_url=homepage_url,
+        established_date=established_date,
+        operation_status=operation_status,
+        lat=lat,
+        lng=lng,
+        total_score=_facility_trust_score(checklist),
+        checklist=checklist,
+    )
+
+
 def _load_412_centers() -> list[dict]:
     if not JSON_412_PATH.exists():
         return []
@@ -187,23 +291,30 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                 if not homepage_url:
                     homepage_url = OFFICIAL_FACILITY_URL
 
+                phone = str(row.get("FCLT_TEL_NO") or "").strip() or None
+                operation_status = str(row.get("FCLT_STATUS_NM") or "").strip() or None
+                match_412 = next(
+                    (center for center in centers_412 if center.get("district") == district and (center.get("name") in name or name in center.get("name"))),
+                    None,
+                )
                 items.append(
-                    schema.FacilityItem(
-                        id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
+                    _build_facility_item(
+                        identity=identity,
                         name=name,
                         district=district,
                         facility_type=str(row.get("FCLT_KIND_NM") or "아동복지시설").strip(),
                         address=address,
-                        phone=str(row.get("FCLT_TEL_NO") or "").strip() or None,
+                        phone=phone,
                         homepage_url=homepage_url,
-                        operation_status=str(row.get("FCLT_STATUS_NM") or "").strip() or None,
+                        operation_status=operation_status,
                         lat=lat,
                         lng=lng,
+                        matched_official_center=bool(match_412),
                     )
                 )
 
             return schema.FacilityListResponse(
-                items=items,
+                items=_rank_trusted_facilities(items),
                 total=len(items),
                 geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
                 source=source,
@@ -245,22 +356,24 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
             )
             homepage_url = match_412.get("detail_url") if match_412 else OFFICIAL_FACILITY_URL
 
+            operation_status = (row.get("영업상태명") or "").strip() or None
             items.append(
-                schema.FacilityItem(
-                    id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
+                _build_facility_item(
+                    identity=identity,
                     name=name,
                     district=district,
                     facility_type=(row.get("복지시설종류명") or "아동복지시설").strip(),
                     address=address,
                     homepage_url=homepage_url,
                     established_date=(row.get("인허가일자") or "").strip() or None,
-                    operation_status=(row.get("영업상태명") or "").strip() or None,
+                    operation_status=operation_status,
                     lat=lat,
                     lng=lng,
+                    matched_official_center=bool(match_412),
                 )
             )
         return schema.FacilityListResponse(
-            items=items,
+            items=_rank_trusted_facilities(items),
             total=len(items),
             geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
             source="csv",
@@ -293,8 +406,8 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
             homepage_url = match_412.get("detail_url") if match_412 else OFFICIAL_FACILITY_URL
 
             items.append(
-                schema.FacilityItem(
-                    id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
+                _build_facility_item(
+                    identity=identity,
                     name=name,
                     district=district,
                     facility_type=kind,
@@ -304,10 +417,11 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                     operation_status="운영중",
                     lat=lat,
                     lng=lng,
+                    matched_official_center=bool(match_412),
                 )
             )
         return schema.FacilityListResponse(
-            items=items,
+            items=_rank_trusted_facilities(items),
             total=len(items),
             geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
             source="json_412",
