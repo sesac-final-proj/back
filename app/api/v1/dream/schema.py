@@ -46,7 +46,7 @@ class FacilityListResponse(BaseModel):
     items: list[FacilityItem]
     total: int
     geocoded_count: int
-    source: Literal["csv", "json_412", "seoul_open_data", "seoul_sample"]
+    source: Literal["csv", "json_412", "seoul_open_data", "seoul_sample", "none"]
     notice: str | None = None
 
 
