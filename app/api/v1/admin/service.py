@@ -1,5 +1,6 @@
 import json
 import csv
+import random
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -8,9 +9,21 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.admin import schema
+from app.models.price_model import (
+    PriceCluster,
+    PriceModelListing,
+    PriceModelMetric,
+    PricePlatformComparison,
+    PricePlatformTest,
+    PricePrediction,
+)
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.api.v1.dream.service import CSV_PATH, JSON_412_PATH, JSON_PARSED_PATH, DISTRICT_SERVICES
+
+# price-distribution에서 세부유형을 몇 개까지 이름 유지하고 나머지를 "기타"로 묶을지.
+PRICE_DISTRIBUTION_TOP_TYPES = 5
+PRICE_DISTRIBUTION_DEFAULT_SAMPLE = 2000
 
 
 INSIGHTS_PATH = Path(__file__).resolve().parents[2] / "data" / "admin_audience_insights.json"
@@ -275,4 +288,112 @@ def get_dream_status() -> schema.DreamStatusResponse:
             "프론트의 donationCount, currentAmount, targetAmount는 현재 0 기본값입니다.",
             "기부 성과 분석은 거래-기부 원장과 집행 원장이 연결된 뒤 활성화해야 합니다.",
         ],
+    )
+
+
+# --------------------------------------------------------------------------
+# 가격예측 모델 대시보드 (docs/issue/12-price-prediction-dashboard.md)
+# scripts/seed_price_model_data.py로 analyzer/outputs/*를 DB에 적재해둔 걸 읽기만 한다.
+# --------------------------------------------------------------------------
+
+
+def get_price_model_metrics(db: Session) -> schema.PriceModelMetricsResponse:
+    rows = db.query(PriceModelMetric).order_by(PriceModelMetric.feature_set, PriceModelMetric.model_key).all()
+    return schema.PriceModelMetricsResponse(
+        metrics=[schema.PriceModelMetricItem.model_validate(r) for r in rows]
+    )
+
+
+def list_price_model_listings(
+    db: Session, category: str | None, detail_type: str | None, page: int, size: int
+) -> schema.PriceModelListingListResponse:
+    query = db.query(PriceModelListing)
+    if category:
+        query = query.filter(PriceModelListing.category == category)
+    if detail_type:
+        query = query.filter(PriceModelListing.detail_type == detail_type)
+    total = query.count()
+    rows = (
+        query.order_by(PriceModelListing.id)
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+    return schema.PriceModelListingListResponse(
+        items=[schema.PriceModelListingItem.model_validate(r) for r in rows], total=total
+    )
+
+
+def get_price_distribution(
+    db: Session, category: str | None, sample: int
+) -> schema.PriceDistributionResponse:
+    """세부유형별 가격분포(스웜 플롯 원본) — 건수 상위 N개 세부유형만 이름을 유지하고
+    나머지는 "기타"로 묶어서, 카테고리별 전체 표본 중 최대 sample건만 흩뿌린다."""
+    query = db.query(PriceModelListing)
+    if category:
+        query = query.filter(PriceModelListing.category == category)
+    listings = query.all()
+
+    by_category: dict[str, list[PriceModelListing]] = {}
+    for listing in listings:
+        by_category.setdefault(listing.category, []).append(listing)
+
+    categories = []
+    for cat_name, cat_listings in by_category.items():
+        type_counts = Counter(item.detail_type for item in cat_listings)
+        top_types = {t for t, _ in type_counts.most_common(PRICE_DISTRIBUTION_TOP_TYPES)}
+
+        prices_by_type: dict[str, list[int]] = {}
+        for item in cat_listings:
+            bucket = item.detail_type if item.detail_type in top_types else "기타"
+            prices_by_type.setdefault(bucket, []).append(item.price)
+
+        types_summary = [
+            schema.PriceDistributionTypeSummary(
+                type=type_name,
+                count=len(prices),
+                median_price=sorted(prices)[len(prices) // 2],
+            )
+            for type_name, prices in sorted(prices_by_type.items(), key=lambda kv: -len(kv[1]))
+        ]
+
+        points = [
+            schema.PriceDistributionPoint(
+                type=item.detail_type if item.detail_type in top_types else "기타",
+                price=item.price,
+            )
+            for item in cat_listings
+        ]
+        if len(points) > sample:
+            points = random.sample(points, sample)
+
+        categories.append(
+            schema.PriceDistributionCategory(
+                category=cat_name,
+                sample_count=len(cat_listings),
+                types=types_summary,
+                points=points,
+            )
+        )
+
+    return schema.PriceDistributionResponse(categories=categories)
+
+
+def get_price_model_charts(db: Session) -> schema.PriceModelChartsResponse:
+    """산점도(예측vs실제)/플랫폼비교/유의성검정/가격군집 — 전부 소규모 스냅샷이라
+    페이지네이션 없이 한 번에 묶어서 내려준다(기존 admin/data-status와 같은 패턴)."""
+    predictions = db.query(PricePrediction).order_by(PricePrediction.feature_set, PricePrediction.id).all()
+    comparisons = (
+        db.query(PricePlatformComparison)
+        .order_by(PricePlatformComparison.category, PricePlatformComparison.platform)
+        .all()
+    )
+    tests = db.query(PricePlatformTest).order_by(PricePlatformTest.category).all()
+    clusters = db.query(PriceCluster).order_by(PriceCluster.category, PriceCluster.median_price).all()
+
+    return schema.PriceModelChartsResponse(
+        predictions=[schema.PricePredictionItem.model_validate(r) for r in predictions],
+        platform_comparisons=[schema.PricePlatformComparisonItem.model_validate(r) for r in comparisons],
+        platform_tests=[schema.PricePlatformTestItem.model_validate(r) for r in tests],
+        clusters=[schema.PriceClusterItem.model_validate(r) for r in clusters],
     )

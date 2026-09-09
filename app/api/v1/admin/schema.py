@@ -201,6 +201,133 @@ class DreamStatusResponse(BaseModel):
     limitations: list[str]
 
 
+# --------------------------------------------------------------------------
+# 가격예측 모델 대시보드 (docs/issue/12-price-prediction-dashboard.md)
+# --------------------------------------------------------------------------
+
+
+class PriceModelMetricItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    feature_set: str
+    model_key: str
+    label: str
+    rmse: float
+    mae: float
+    mape: float
+    r2: float
+    hit10: float
+    hit20: float
+    extra: dict | None = None
+
+
+class PriceModelMetricsResponse(BaseModel):
+    metrics: list[PriceModelMetricItem]
+
+
+class PriceModelListingItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    category: str
+    detail_type: str
+    gu: str
+    condition: str
+    status: str
+    chat_count: int
+    interest_count: int
+    view_count: float
+    manner_temp: float
+    title_length: int
+    days_since_listed: int
+    category_detail_median_price: float
+    price: int
+    price_log: float
+    title: str
+
+
+PriceModelListingListResponse = Page[PriceModelListingItem]
+
+
+class PriceDistributionTypeSummary(BaseModel):
+    type: str
+    count: int
+    median_price: float
+
+
+class PriceDistributionPoint(BaseModel):
+    type: str
+    price: int
+
+
+class PriceDistributionCategory(BaseModel):
+    category: str
+    sample_count: int
+    types: list[PriceDistributionTypeSummary]
+    points: list[PriceDistributionPoint]
+
+
+class PriceDistributionResponse(BaseModel):
+    categories: list[PriceDistributionCategory]
+
+
+class PricePredictionItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    feature_set: str
+    category: str
+    detail_type: str
+    title: str
+    actual_price: int
+    predicted_price: int
+    error_rate: float
+
+
+class PricePlatformComparisonItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    platform: str
+    sample_count: int
+    mean_price: float
+    median_price: float
+    std_price: float
+    p25_price: float
+    p75_price: float
+
+
+class PricePlatformTestItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    platform_a: str
+    platform_b: str
+    median_a: float
+    median_b: float
+    diff_pct: float
+    p_value: float
+    significant: bool
+
+
+class PriceClusterItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    price_band: str
+    share: float
+    median_price: float
+    range_low: float
+    range_high: float
+    sample_count: int
+
+
+class PriceModelChartsResponse(BaseModel):
+    predictions: list[PricePredictionItem]
+    platform_comparisons: list[PricePlatformComparisonItem]
+    platform_tests: list[PricePlatformTestItem]
+    clusters: list[PriceClusterItem]
+
+
 NoticeStatus = Literal["draft", "published", "hidden"]
 
 
