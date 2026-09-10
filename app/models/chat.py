@@ -27,6 +27,9 @@ class ChatRoomParticipant(Base):
     chat_room_id: Mapped[int] = mapped_column(ForeignKey("chat_rooms.id"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     unread_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 이 참여자가 메시지함을 마지막으로 연 시각 — 상대방 기준 "내가 보낸 메시지 읽음 여부"
+    # 판단에 쓴다 (한 번도 안 열었으면 None).
+    last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
