@@ -43,6 +43,12 @@ def get_dashboard_overview(db: Session) -> schema.DashboardOverview:
         .group_by(func.date(Transaction.collected_at))
     ).all()
     counts = {str(day): count for day, count in rows}
+    gu_status_rows = db.execute(
+        select(Region.gu_name, Transaction.status, func.count(Transaction.id))
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.gu_name, Transaction.status)
+        .order_by(Region.gu_name, func.count(Transaction.id).desc())
+    ).all()
     return schema.DashboardOverview(
         summary=schema.DashboardSummary(
             total_transactions=data.total_transactions,
@@ -56,6 +62,10 @@ def get_dashboard_overview(db: Session) -> schema.DashboardOverview:
             transaction_count=counts.get(str(first_day + timedelta(days=i)), 0),
         ) for i in range(14)],
         trade_status=data.status_counts,
+        trade_status_by_gu=[
+            schema.GuStatusDataCount(gu_name=gu_name, status=status or "상태 미확인", transaction_count=count)
+            for gu_name, status, count in gu_status_rows
+        ],
         region_ranking=data.region_counts[:5],
         price_distribution=data.price_band_counts,
         source=schema.DashboardSource(name="당근 수집 거래", status="available" if data.total_transactions else "empty", last_collected_at=data.latest_collected_at),
@@ -124,7 +134,7 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         .join(Transaction, Transaction.region_id == Region.id)
         .group_by(Region.id, Region.gu_name, Region.dong_name)
         .order_by(func.count(Transaction.id).desc(), Region.gu_name, Region.dong_name)
-        .limit(12)
+        .limit(200)  # 상위 12개로 잘려서 구별 지도(SeoulGuMap)가 대부분 동을 회색으로 그리던 원인 — 지금 매칭된 지역이 83개라 여유 있게 200
     ).all()
 
     category_rows = db.execute(
