@@ -36,6 +36,12 @@ class GuStatusDataCount(BaseModel):
     transaction_count: int
 
 
+class GuCategoryDataCount(BaseModel):
+    gu_name: str
+    category: str
+    transaction_count: int
+
+
 class DailyTransactionCount(BaseModel):
     date: date
     transaction_count: int
@@ -75,6 +81,7 @@ class DataStatusResponse(BaseModel):
     price_band_counts: list[PriceBandCount] = Field(default_factory=list)
     region_counts: list[RegionDataCount]
     category_counts: list[CategoryDataCount]
+    category_counts_by_gu: list[GuCategoryDataCount] = Field(default_factory=list)
     recent_transactions: list[RecentTransactionItem] = Field(default_factory=list)
     recent_errors: list[CollectionErrorItem] = Field(default_factory=list)
 

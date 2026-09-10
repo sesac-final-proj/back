@@ -356,6 +356,19 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         .limit(8)
     ).all()
 
+    # SeoulGuMap 구 탭 옆 "카테고리 구성" 패널이 탭에 맞춰 바뀌도록 — 전체 category_counts와
+    # 별개로 구별로도 집계해둔다. 표본이 작아(구 3개 × 카테고리 6개 이하) limit 없이 다 내려도 됨.
+    category_by_gu_rows = db.execute(
+        select(
+            Region.gu_name,
+            Transaction.category,
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.gu_name, Transaction.category)
+        .order_by(Region.gu_name, func.count(Transaction.id).desc())
+    ).all()
+
     return schema.DataStatusResponse(
         total_transactions=total_transactions,
         priced_transactions=priced_transactions,
@@ -391,6 +404,10 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
                 average_price=round(float(category_average)) if category_average is not None else None,
             )
             for category, count, priced_count, completed_count, category_average in category_rows
+        ],
+        category_counts_by_gu=[
+            schema.GuCategoryDataCount(gu_name=gu_name, category=category, transaction_count=count)
+            for gu_name, category, count in category_by_gu_rows
         ],
         recent_transactions=[
             schema.RecentTransactionItem(
