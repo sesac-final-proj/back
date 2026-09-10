@@ -42,6 +42,12 @@ class GuCategoryDataCount(BaseModel):
     transaction_count: int
 
 
+class RegionCategoryDataCount(BaseModel):
+    region_name: str  # "구 동" — RegionDataCount.region_name과 같은 포맷
+    category: str
+    transaction_count: int
+
+
 class DailyTransactionCount(BaseModel):
     date: date
     transaction_count: int
@@ -82,6 +88,7 @@ class DataStatusResponse(BaseModel):
     region_counts: list[RegionDataCount]
     category_counts: list[CategoryDataCount]
     category_counts_by_gu: list[GuCategoryDataCount] = Field(default_factory=list)
+    category_counts_by_region: list[RegionCategoryDataCount] = Field(default_factory=list)
     recent_transactions: list[RecentTransactionItem] = Field(default_factory=list)
     recent_errors: list[CollectionErrorItem] = Field(default_factory=list)
 

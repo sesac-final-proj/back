@@ -369,6 +369,19 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         .order_by(Region.gu_name, func.count(Transaction.id).desc())
     ).all()
 
+    # 동 단위 선택(SeoulGuMap에서 동 클릭)에도 카테고리 구성이 따라 바뀌도록 — region_counts와
+    # 같은 "구 동" 포맷 키를 쓴다. 매칭된 지역이 83개뿐이라 이것도 limit 없이 다 내림.
+    category_by_region_rows = db.execute(
+        select(
+            (Region.gu_name + " " + Region.dong_name).label("region_name"),
+            Transaction.category,
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.id, Region.gu_name, Region.dong_name, Transaction.category)
+        .order_by(Region.gu_name, Region.dong_name, func.count(Transaction.id).desc())
+    ).all()
+
     return schema.DataStatusResponse(
         total_transactions=total_transactions,
         priced_transactions=priced_transactions,
@@ -408,6 +421,10 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         category_counts_by_gu=[
             schema.GuCategoryDataCount(gu_name=gu_name, category=category, transaction_count=count)
             for gu_name, category, count in category_by_gu_rows
+        ],
+        category_counts_by_region=[
+            schema.RegionCategoryDataCount(region_name=region_name, category=category, transaction_count=count)
+            for region_name, category, count in category_by_region_rows
         ],
         recent_transactions=[
             schema.RecentTransactionItem(
