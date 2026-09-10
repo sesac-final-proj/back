@@ -1,8 +1,15 @@
+import logging
+
 from fastapi import status
 from fastapi.exceptions import RequestValidationError
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.core.config import settings
+
+logger = logging.getLogger("app.request")
+_ALLOWED_ORIGINS = {origin.strip() for origin in settings.FRONTEND_ORIGINS.split(",") if origin.strip()}
 
 
 class AppError(Exception):
@@ -57,7 +64,28 @@ async def validation_exception_handler(
     )
 
 
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Starlette는 Exception(=500) 핸들러를 ExceptionMiddleware가 아니라 가장 바깥쪽
+    # ServerErrorMiddleware로 빼서 실행한다(build_middleware_stack 참고) — CORSMiddleware
+    # 보다 바깥이라 이 핸들러가 만든 응답엔 CORSMiddleware가 헤더를 못 붙인다. 그 상태로
+    # 나가면 브라우저가 응답을 막아버려서 프론트엔 500 메시지 대신 "Failed to fetch"만
+    # 보인다 — 그래서 CORS 헤더를 여기서 직접 붙인다. 실제 예외는 서버 로그에 남기고,
+    # 클라이언트에는 내부 정보 노출 없이 일반 메시지만 반환.
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    response = JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=_error_body("INTERNAL_ERROR", "서버 오류가 발생했습니다."),
+    )
+    origin = request.headers.get("origin")
+    if origin in _ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    return response
+
+
 def register_exception_handlers(app) -> None:
     app.add_exception_handler(AppError, app_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
