@@ -39,6 +39,20 @@ OUTLIER_TRIM_PCT = 0.97  # 카테고리 기준 상위 3% 가격 이상치 제외
 # 데이터와 맞춰 역산한 값. 실제 등급 분포 보고 조정 필요하면 여기만 바꾸면 됨.
 _GRADE_THRESHOLDS = [(100, "S"), (40, "A"), (20, "B")]
 
+ALL_CATEGORIES = "전체"  # 프론트 카테고리 탭 맨 앞에 오는 전체 합산 집계
+
+
+def _group_by_category(rows: list[dict]) -> dict[str, list[dict]]:
+    """실제 카테고리별로 묶고, 전체 합산용 "전체" 그룹도 같이 만든다.
+
+    세부유형별 통계(seed_detail_type_stats)는 여기 안 쓴다 — "청소기 V8"과 "마미케어
+    미니"처럼 카테고리가 다르면 세부유형 이름이 겹쳐도 서로 무관한 값이라, 전체 합산이
+    의미가 없다(프론트에서 "전체" 선택 시 세부유형 표는 빈 상태로 보임)."""
+    by_category: dict[str, list[dict]] = {ALL_CATEGORIES: list(rows)}
+    for r in rows:
+        by_category.setdefault(r["카테고리"], []).append(r)
+    return by_category
+
 
 def _read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8-sig", newline="") as f:
@@ -65,9 +79,7 @@ def _trend_pct(rows: list[dict]) -> float | None:
 
 def seed_category_summaries(db, rows: list[dict]) -> int:
     db.query(PriceCategorySummary).delete()
-    by_category: dict[str, list[dict]] = {}
-    for r in rows:
-        by_category.setdefault(r["카테고리"], []).append(r)
+    by_category = _group_by_category(rows)
 
     for category, crows in by_category.items():
         prices = [int(r["가격원"]) for r in crows]
@@ -93,8 +105,9 @@ def seed_category_summaries(db, rows: list[dict]) -> int:
 def seed_region_stats(db, rows: list[dict]) -> int:
     db.query(PriceRegionStat).delete()
     by_group: dict[tuple[str, str], list[dict]] = {}
-    for r in rows:
-        by_group.setdefault((r["카테고리"], r["구"]), []).append(r)
+    for category, crows in _group_by_category(rows).items():
+        for r in crows:
+            by_group.setdefault((category, r["구"]), []).append(r)
 
     for (category, gu), grows in by_group.items():
         prices = [int(r["가격원"]) for r in grows]
@@ -153,12 +166,8 @@ def seed_listing_samples(db, rows: list[dict]) -> int:
     db.query(PriceListingSample).delete()
     rng = random.Random(0)
 
-    by_category: dict[str, list[dict]] = {}
-    for r in rows:
-        by_category.setdefault(r["카테고리"], []).append(r)
-
     total = 0
-    for category, crows in by_category.items():
+    for category, crows in _group_by_category(rows).items():
         prices = sorted(int(r["가격원"]) for r in crows)
         cutoff = prices[int(len(prices) * OUTLIER_TRIM_PCT)]
         trimmed = [r for r in crows if int(r["가격원"]) <= cutoff]
