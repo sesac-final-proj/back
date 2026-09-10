@@ -24,6 +24,7 @@ from app.models.favorite import ProductFavorite
 from app.models.product import Product
 from app.models.region import Region
 from app.models.user import User, UserRole
+from app.models.wallet import WalletTransaction
 
 
 def main():
@@ -66,6 +67,7 @@ def main():
     product_id = None
     room_id = None
     room_from_stranger_id = None
+    payment_id = None
     try:
         # 활동동네 없는 유저는 상품 등록 불가
         try:
@@ -320,6 +322,20 @@ def main():
         except PermissionDeniedError:
             pass
 
+        # room_from_stranger엔 송금(WalletTransaction)이 한 번 있었다고 가정 — 삭제 시
+        # 이 방은 보존(product_id만 NULL)되고, 송금 이력이 없는 room은 통째로 지워져야 한다.
+        payment = WalletTransaction(
+            chat_room_id=room_from_stranger_id,
+            product_id=product.id,
+            sender_id=stranger.id,
+            receiver_id=owner.id,
+            amount=1000,
+            balance_after=stranger.wallet_balance - 1000,
+        )
+        db.add(payment)
+        db.flush()
+        payment_id = payment.id
+
         # 삭제
         try:
             trade_service.delete_product(db, other, product.id)
@@ -334,10 +350,19 @@ def main():
         except NotFoundError:
             pass
 
-        # 삭제 후에도 채팅방은 남아있고, product_id만 NULL로 끊긴다
-        room_after_delete = db.get(ChatRoom, room.id)
-        assert room_after_delete is not None
-        assert room_after_delete.product_id is None
+        # 송금 이력 없던 room은 통째로 지워진다.
+        assert db.get(ChatRoom, room.id) is None
+        room_id = None  # 이미 삭제됨 -> finally에서 중복 처리 안 하도록
+
+        # 송금 이력 있는 room_from_stranger는 남고 product_id만 NULL로 끊긴다.
+        room_from_stranger_after = db.get(ChatRoom, room_from_stranger_id)
+        assert room_from_stranger_after is not None
+        assert room_from_stranger_after.product_id is None
+
+        # 송금 기록 자체는 삭제되지 않고 product_id만 끊긴다(돈 이력 보존).
+        payment_after = db.get(WalletTransaction, payment_id)
+        assert payment_after is not None
+        assert payment_after.product_id is None
 
         try:
             trade_service.delete_product(db, owner, -1)
@@ -354,6 +379,8 @@ def main():
             db.query(ChatRoomParticipant).filter_by(chat_room_id=room_id).delete()
             db.query(ChatRoom).filter_by(id=room_id).delete()
         if room_from_stranger_id is not None:
+            if payment_id is not None:
+                db.query(WalletTransaction).filter_by(id=payment_id).delete()
             db.query(ChatMessage).filter_by(chat_room_id=room_from_stranger_id).delete()
             db.query(ChatRoomParticipant).filter_by(chat_room_id=room_from_stranger_id).delete()
             db.query(ChatRoom).filter_by(id=room_from_stranger_id).delete()
