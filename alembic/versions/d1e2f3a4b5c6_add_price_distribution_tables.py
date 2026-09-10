@@ -1,7 +1,11 @@
 """add price_distribution_* tables (크롤링 분석 세션 어드민 지역비교 대시보드)
 
+f8a9b0c1d2e3(price_model 계열)와 681a93484e95(community-post-management 계열)가
+a4b5c6d7e8f9 이후로 각자 갈라진 채 병합 안 된 상태로 남아있던 걸 여기서 합친다
+(다른 스키마 변경 없이 head 두 개를 하나로 묶는 용도 겸용).
+
 Revision ID: d1e2f3a4b5c6
-Revises: f8a9b0c1d2e3
+Revises: f8a9b0c1d2e3, 681a93484e95
 Create Date: 2026-09-10 00:00:00.000000
 """
 from typing import Sequence, Union
@@ -12,7 +16,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'd1e2f3a4b5c6'
-down_revision: Union[str, None] = 'f8a9b0c1d2e3'
+down_revision: Union[str, Sequence[str], None] = ('f8a9b0c1d2e3', '681a93484e95')
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
