@@ -5,7 +5,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.admin import schema
@@ -24,8 +24,10 @@ from app.models.price_distribution import (
     PriceListingSample,
     PriceRegionStat,
 )
+from app.models.notice import AdminNotice, AdminNoticeAlert
 from app.models.region import Region
 from app.models.transaction import Transaction
+from app.models.user import User, UserRole
 from app.api.v1.dream.service import CSV_PATH, JSON_412_PATH, JSON_PARSED_PATH, DISTRICT_SERVICES
 
 # price-distribution에서 세부유형을 몇 개까지 이름 유지하고 나머지를 "기타"로 묶을지.
@@ -36,6 +38,195 @@ PRICE_DISTRIBUTION_DEFAULT_SAMPLE = 2000
 INSIGHTS_PATH = Path(__file__).resolve().parents[2] / "data" / "admin_audience_insights.json"
 if not INSIGHTS_PATH.exists():
     INSIGHTS_PATH = Path(__file__).resolve().parents[3] / "data" / "admin_audience_insights.json"
+
+
+def _notice_status(notice: AdminNotice, now: datetime | None = None) -> schema.NoticeStatus:
+    if notice.manual_status == "hidden":
+        return "hidden"
+    now = now or datetime.now(timezone.utc)
+    starts_at = notice.starts_at
+    ends_at = notice.ends_at
+    if starts_at is not None and starts_at.tzinfo is None:
+        starts_at = starts_at.replace(tzinfo=timezone.utc)
+    if ends_at is not None and ends_at.tzinfo is None:
+        ends_at = ends_at.replace(tzinfo=timezone.utc)
+    if starts_at is None:
+        return "draft"
+    if starts_at > now:
+        return "scheduled"
+    if ends_at is not None and ends_at < now:
+        return "ended"
+    return "published"
+
+
+def _warning_reasons(notice: AdminNotice, status: schema.NoticeStatus, now: datetime | None = None) -> list[str]:
+    now = now or datetime.now(timezone.utc)
+    reasons: list[str] = []
+    if not notice.title.strip() or not notice.content.strip() or not notice.service:
+        reasons.append("필수 정보 누락")
+    if notice.starts_at is None:
+        reasons.append("시작일 없음")
+    starts_at = notice.starts_at.replace(tzinfo=timezone.utc) if notice.starts_at and notice.starts_at.tzinfo is None else notice.starts_at
+    ends_at = notice.ends_at.replace(tzinfo=timezone.utc) if notice.ends_at and notice.ends_at.tzinfo is None else notice.ends_at
+    if starts_at and starts_at < now and notice.manual_status == "draft":
+        reasons.append("시작일 지났는데 작성중")
+    if ends_at and status == "published":
+        remaining = ends_at - now
+        if timedelta(0) <= remaining <= timedelta(days=3):
+            days = max(0, remaining.days)
+            reasons.append(f"종료 {days}일 전")
+    if ends_at and ends_at < now and notice.manual_status == "published":
+        reasons.append("종료일 지났는데 게시중")
+    return reasons
+
+
+def _notice_item(notice: AdminNotice, now: datetime | None = None) -> schema.NoticeListItem:
+    now = now or datetime.now(timezone.utc)
+    status = _notice_status(notice, now)
+    return schema.NoticeListItem(
+        id=notice.id,
+        service=notice.service,
+        title=notice.title,
+        content=notice.content,
+        status=status,
+        manual_status=notice.manual_status,
+        starts_at=notice.starts_at,
+        ends_at=notice.ends_at,
+        display_order=notice.display_order,
+        alert_count=notice.alert_count,
+        warning_reasons=_warning_reasons(notice, status, now),
+        created_at=notice.created_at,
+        updated_at=notice.updated_at,
+        deleted_at=notice.deleted_at,
+    )
+
+
+def list_notices(
+    db: Session,
+    q: str | None = None,
+    service: str | None = None,
+    status: str | None = None,
+    delete_status: str | None = None,
+    page: int = 1,
+    size: int = 10,
+) -> schema.NoticeListResponse:
+    query = db.query(AdminNotice)
+    if delete_status == "deleted":
+        query = query.filter(AdminNotice.deleted_at.is_not(None))
+    elif delete_status != "all":
+        query = query.filter(AdminNotice.deleted_at.is_(None))
+    if q:
+        keyword = f"%{q.strip()}%"
+        query = query.filter(or_(AdminNotice.title.ilike(keyword), AdminNotice.content.ilike(keyword)))
+    if service in ("dream", "carrot"):
+        query = query.filter(AdminNotice.service == service)
+    rows = query.order_by(AdminNotice.display_order.asc(), AdminNotice.created_at.desc(), AdminNotice.id.desc()).all()
+    now = datetime.now(timezone.utc)
+    items = [_notice_item(row, now) for row in rows]
+    if status in ("draft", "scheduled", "published", "ended", "hidden"):
+        items = [item for item in items if item.status == status]
+    total = len(items)
+    start = (page - 1) * size
+    return schema.NoticeListResponse(items=items[start:start + size], total=total)
+
+
+def create_notice(db: Session, admin: User, payload: schema.NoticeCreateRequest) -> schema.NoticeListItem:
+    max_order = db.scalar(select(func.max(AdminNotice.display_order)).where(AdminNotice.deleted_at.is_(None))) or 0
+    notice = AdminNotice(
+        service=payload.service,
+        title=payload.title.strip(),
+        content=payload.content.strip(),
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        manual_status=payload.manual_status,
+        display_order=max_order + 1,
+        created_by=admin.id,
+        updated_by=admin.id,
+    )
+    db.add(notice)
+    db.commit()
+    db.refresh(notice)
+    return _notice_item(notice)
+
+
+def update_notice(db: Session, admin: User, notice_id: int, payload: schema.NoticeUpdateRequest) -> schema.NoticeListItem:
+    notice = db.query(AdminNotice).filter(AdminNotice.id == notice_id, AdminNotice.deleted_at.is_(None)).first()
+    if notice is None:
+        raise ValueError("notice_not_found")
+    fields = payload.model_fields_set
+    for field in ("service", "title", "content", "starts_at", "ends_at", "manual_status"):
+        if field not in fields:
+            continue
+        value = getattr(payload, field)
+        setattr(notice, field, value.strip() if isinstance(value, str) and field in {"title", "content"} else value)
+    notice.updated_by = admin.id
+    db.commit()
+    db.refresh(notice)
+    return _notice_item(notice)
+
+
+def soft_delete_notice(db: Session, admin: User, notice_id: int) -> None:
+    notice = db.query(AdminNotice).filter(AdminNotice.id == notice_id, AdminNotice.deleted_at.is_(None)).first()
+    if notice is None:
+        raise ValueError("notice_not_found")
+    notice.deleted_at = datetime.now(timezone.utc)
+    notice.deleted_by = admin.id
+    notice.updated_by = admin.id
+    db.commit()
+
+
+def duplicate_notice(db: Session, admin: User, notice_id: int) -> schema.NoticeListItem:
+    original = db.query(AdminNotice).filter(AdminNotice.id == notice_id, AdminNotice.deleted_at.is_(None)).first()
+    if original is None:
+        raise ValueError("notice_not_found")
+    max_order = db.scalar(select(func.max(AdminNotice.display_order)).where(AdminNotice.deleted_at.is_(None))) or 0
+    notice = AdminNotice(
+        service=original.service,
+        title=f"{original.title} 복사본",
+        content=original.content,
+        manual_status=None,
+        starts_at=None,
+        ends_at=None,
+        display_order=max_order + 1,
+        alert_count=0,
+        created_by=admin.id,
+        updated_by=admin.id,
+    )
+    db.add(notice)
+    db.commit()
+    db.refresh(notice)
+    return _notice_item(notice)
+
+
+def create_notice_alerts(db: Session, notice_id: int) -> schema.AlertCreatedResponse:
+    notice = db.query(AdminNotice).filter(AdminNotice.id == notice_id, AdminNotice.deleted_at.is_(None)).first()
+    if notice is None:
+        raise ValueError("notice_not_found")
+    existing_user_ids = {
+        row[0] for row in db.execute(select(AdminNoticeAlert.user_id).where(AdminNoticeAlert.notice_id == notice_id)).all()
+    }
+    users = db.scalars(select(User).where(User.role == UserRole.USER)).all()
+    created = 0
+    for user in users:
+        if user.id in existing_user_ids:
+            continue
+        db.add(AdminNoticeAlert(notice_id=notice_id, user_id=user.id))
+        created += 1
+    notice.alert_count += created
+    db.commit()
+    db.refresh(notice)
+    return schema.AlertCreatedResponse(notice_id=notice.id, created_count=created, alert_count=notice.alert_count, created_at=datetime.now(timezone.utc))
+
+
+def reorder_notices(db: Session, admin: User, payload: schema.NoticeOrderRequest) -> schema.NoticeListResponse:
+    notices = db.query(AdminNotice).filter(AdminNotice.id.in_(payload.notice_ids), AdminNotice.deleted_at.is_(None)).all()
+    by_id = {notice.id: notice for notice in notices}
+    for index, notice_id in enumerate(payload.notice_ids, start=1):
+        if notice_id in by_id:
+            by_id[notice_id].display_order = index
+            by_id[notice_id].updated_by = admin.id
+    db.commit()
+    return list_notices(db, page=1, size=10)
 
 
 def get_dashboard_overview(db: Session) -> schema.DashboardOverview:
