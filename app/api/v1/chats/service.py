@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.api.v1.chats import schema
@@ -316,7 +318,16 @@ def list_messages(db: Session, user: User, chat_room_id: int, page: int, size: i
         .all()
     )
 
+    # 상대방 참여자 행 — TRADE 채팅방은 항상 2명이라 하나로 고정.
+    counterpart_participant = (
+        db.query(ChatRoomParticipant)
+        .filter(ChatRoomParticipant.chat_room_id == chat_room_id, ChatRoomParticipant.user_id != user.id)
+        .first()
+    )
+    counterpart_last_read_at = counterpart_participant.last_read_at if counterpart_participant else None
+
     participant.unread_count = 0
+    participant.last_read_at = datetime.now(timezone.utc)
     db.commit()
 
     payment_ids = [m.payment_id for m in rows if m.payment_id is not None]
@@ -330,4 +341,4 @@ def list_messages(db: Session, user: User, chat_room_id: int, page: int, size: i
         }
 
     items = [_to_message_response(m, payment=payments_by_id.get(m.payment_id)) for m in rows]
-    return schema.MessageListResponse(items=items, total=total)
+    return schema.MessageListResponse(items=items, total=total, counterpart_last_read_at=counterpart_last_read_at)
