@@ -12,6 +12,7 @@ from app.api.v1.community.router import router as community_router
 from app.api.v1.dream.router import router as dream_router
 from app.api.v1.local.router import router as local_router
 from app.api.v1.nicknames.router import router as nicknames_router
+from app.api.v1.notices.router import router as notices_router
 from app.api.v1.real_estate.router import router as real_estate_router
 from app.api.v1.safety.router import router as safety_router
 from app.api.v1.support.router import router as support_router
@@ -65,6 +66,7 @@ app.include_router(real_estate_router)
 app.include_router(safety_router)
 app.include_router(support_router)
 app.include_router(wallet_router)
+app.include_router(notices_router)
 
 
 @app.get("/api")

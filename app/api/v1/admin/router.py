@@ -1,12 +1,13 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1.admin import schema, service
 from app.core.db import get_db
 from app.core.deps import require_admin
+from app.models.user import User
 
 
 router = APIRouter(
@@ -84,3 +85,80 @@ def price_model_shap_summary(feature_set: Literal["full", "no_leak_prone"] = "fu
     if path is None:
         raise HTTPException(status_code=404, detail="SHAP 요약 이미지가 없습니다.")
     return FileResponse(path, media_type="image/png")
+
+
+@router.get("/notices", response_model=schema.NoticeListResponse)
+def notices(
+    q: str | None = None,
+    service_name: str | None = Query(default=None, alias="service"),
+    notice_status: str | None = Query(default=None, alias="status"),
+    delete_status: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    return service.list_notices(db, q=q, service=service_name, status=notice_status, delete_status=delete_status, page=page, size=size)
+
+
+@router.post("/notices", response_model=schema.NoticeListItem, status_code=status.HTTP_201_CREATED)
+def create_notice(
+    payload: schema.NoticeCreateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    return service.create_notice(db, admin, payload)
+
+
+@router.patch("/notices/order", response_model=schema.NoticeListResponse)
+def reorder_notices(
+    payload: schema.NoticeOrderRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    return service.reorder_notices(db, admin, payload)
+
+
+@router.patch("/notices/{notice_id}", response_model=schema.NoticeListItem)
+def update_notice(
+    notice_id: int,
+    payload: schema.NoticeUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    try:
+        return service.update_notice(db, admin, notice_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.") from error
+
+
+@router.delete("/notices/{notice_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_notice(
+    notice_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    try:
+        service.soft_delete_notice(db, admin, notice_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.") from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/notices/{notice_id}/duplicate", response_model=schema.NoticeListItem, status_code=status.HTTP_201_CREATED)
+def duplicate_notice(
+    notice_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    try:
+        return service.duplicate_notice(db, admin, notice_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.") from error
+
+
+@router.post("/notices/{notice_id}/alerts", response_model=schema.AlertCreatedResponse)
+def create_notice_alerts(notice_id: int, db: Session = Depends(get_db)):
+    try:
+        return service.create_notice_alerts(db, notice_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.") from error
