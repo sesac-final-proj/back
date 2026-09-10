@@ -21,7 +21,7 @@ class BlockedUserItem(BaseModel):
 BlockedUserListResponse = Page[BlockedUserItem]
 
 
-ReportTargetType = Literal["USER", "PRODUCT", "MESSAGE"]
+ReportTargetType = Literal["USER", "PRODUCT", "MESSAGE", "COMMUNITY_POST"]
 
 
 class ReportCreateRequest(BaseModel):

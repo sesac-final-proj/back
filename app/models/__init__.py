@@ -1,6 +1,7 @@
 from app.models.analysis import Analysis, AnalysisResult  # noqa: F401
 from app.models.block import UserBlock  # noqa: F401
 from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant  # noqa: F401
+from app.models.community import CommunityPost, CommunityPostComment, CommunityPostEmotion, HiddenCommunityPost  # noqa: F401
 from app.models.favorite import ProductFavorite  # noqa: F401
 from app.models.point import PointTransaction  # noqa: F401
 from app.models.price_model import (  # noqa: F401
