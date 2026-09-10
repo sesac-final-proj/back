@@ -198,13 +198,16 @@ def _get_owned_user_region(db: Session, user: User, region_id: int) -> UserRegio
 
 def _add_user_region(db: Session, user: User, region: Region, radius_m: int, want_primary: bool) -> UserRegionItem:
     existing_count = db.query(UserRegion).filter(UserRegion.user_id == user.id).count()
+    # 중복 검사를 인원수 검사보다 먼저 한다 — 순서가 반대면 "이미 등록된 동네"를 다시
+    # 고른 경우에도(이미 2개 채워진 상태라면 흔히 일어남) "동네 2개 다 찼다"는 엉뚱한
+    # 메시지가 떠서 "분명 그 동네 등록했는데 왜 안 되냐"는 혼란을 준다.
+    if db.query(UserRegion).filter(UserRegion.user_id == user.id, UserRegion.region_id == region.id).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 동네입니다.")
     if existing_count >= MAX_USER_REGIONS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"이미 동네를 {MAX_USER_REGIONS}개 등록했어요. 하나를 삭제한 뒤 추가해주세요.",
         )
-    if db.query(UserRegion).filter(UserRegion.user_id == user.id, UserRegion.region_id == region.id).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 등록된 동네입니다.")
 
     # 첫 동네 등록이면 무조건 대표로 — 대표가 하나도 없는 상태를 만들지 않기 위함.
     make_primary = want_primary or existing_count == 0
@@ -288,6 +291,20 @@ def update_region(db: Session, user: User, payload: RegionUpdateRequest) -> User
     if existing is not None:
         _set_primary_user_region(db, user, existing, payload.radius_m)
     else:
+        # 프론트가 아직 "동네 여러 개 등록" UI를 노출하지 않아서(사용자 입장에선 여전히
+        # 활동동네 1개짜리) 이 레거시 엔드포인트는 항상 성공해야 한다 — 이미 2개 다
+        # 찼으면 "동네 2개 찼어요" 에러를 그냥 던지는 대신, 대표가 아니던 슬롯을 자동으로
+        # 비우고 새 동네를 그 자리에 채운다. "동네 추가"(POST /me/regions, 사용자가 직접
+        # 명시적으로 두 번째 동네를 등록하는 흐름)만 그 에러로 막는다.
+        if db.query(UserRegion).filter(UserRegion.user_id == user.id).count() >= MAX_USER_REGIONS:
+            non_primary = (
+                db.query(UserRegion)
+                .filter(UserRegion.user_id == user.id, UserRegion.is_primary.is_(False))
+                .first()
+            )
+            if non_primary is not None:
+                db.delete(non_primary)
+                db.flush()
         _add_user_region(db, user, region, payload.radius_m, want_primary=True)
     db.refresh(user)
     return user
