@@ -30,6 +30,12 @@ class StatusDataCount(BaseModel):
     transaction_count: int
 
 
+class GuStatusDataCount(BaseModel):
+    gu_name: str
+    status: str
+    transaction_count: int
+
+
 class DailyTransactionCount(BaseModel):
     date: date
     transaction_count: int
@@ -91,6 +97,7 @@ class DashboardOverview(BaseModel):
     summary: DashboardSummary
     collection_trend: list[DailyTransactionCount]
     trade_status: list[StatusDataCount]
+    trade_status_by_gu: list[GuStatusDataCount] = Field(default_factory=list)
     region_ranking: list[RegionDataCount]
     price_distribution: list[PriceBandCount]
     source: DashboardSource
@@ -317,6 +324,16 @@ class PriceDistributionCategory(BaseModel):
 
 class PriceDistributionResponse(BaseModel):
     categories: list[PriceDistributionCategory]
+
+
+class DetailTypeCountItem(BaseModel):
+    category: str
+    detail_type: str
+    count: int
+
+
+class DetailTypeCountsResponse(BaseModel):
+    items: list[DetailTypeCountItem]
 
 
 class PricePredictionItem(BaseModel):

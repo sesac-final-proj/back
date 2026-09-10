@@ -49,6 +49,12 @@ def get_dashboard_overview(db: Session) -> schema.DashboardOverview:
         .group_by(func.date(Transaction.collected_at))
     ).all()
     counts = {str(day): count for day, count in rows}
+    gu_status_rows = db.execute(
+        select(Region.gu_name, Transaction.status, func.count(Transaction.id))
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.gu_name, Transaction.status)
+        .order_by(Region.gu_name, func.count(Transaction.id).desc())
+    ).all()
     return schema.DashboardOverview(
         summary=schema.DashboardSummary(
             total_transactions=data.total_transactions,
@@ -62,6 +68,10 @@ def get_dashboard_overview(db: Session) -> schema.DashboardOverview:
             transaction_count=counts.get(str(first_day + timedelta(days=i)), 0),
         ) for i in range(14)],
         trade_status=data.status_counts,
+        trade_status_by_gu=[
+            schema.GuStatusDataCount(gu_name=gu_name, status=status or "상태 미확인", transaction_count=count)
+            for gu_name, status, count in gu_status_rows
+        ],
         region_ranking=data.region_counts[:5],
         price_distribution=data.price_band_counts,
         source=schema.DashboardSource(name="당근 수집 거래", status="available" if data.total_transactions else "empty", last_collected_at=data.latest_collected_at),
@@ -130,7 +140,7 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         .join(Transaction, Transaction.region_id == Region.id)
         .group_by(Region.id, Region.gu_name, Region.dong_name)
         .order_by(func.count(Transaction.id).desc(), Region.gu_name, Region.dong_name)
-        .limit(12)
+        .limit(200)  # 상위 12개로 잘려서 구별 지도(SeoulGuMap)가 대부분 동을 회색으로 그리던 원인 — 지금 매칭된 지역이 83개라 여유 있게 200
     ).all()
 
     category_rows = db.execute(
@@ -302,6 +312,33 @@ def get_dream_status() -> schema.DreamStatusResponse:
 # 가격예측 모델 대시보드 (docs/issue/12-price-prediction-dashboard.md)
 # scripts/seed_price_model_data.py로 analyzer/outputs/*를 DB에 적재해둔 걸 읽기만 한다.
 # --------------------------------------------------------------------------
+
+
+# SHAP summary plot은 matplotlib이 그린 PNG라 DB에 넣지 않고 analyzer 핸드오프
+# 폴더(outputs/viz/)에서 파일 그대로 서빙한다 — seed 스크립트의 DEFAULT_SOURCE_DIR와 같은 경로.
+PRICE_MODEL_SOURCE_DIR = Path(__file__).resolve().parents[5] / "analyzer" / "outputs" / "viz"
+
+
+def get_shap_summary_path(feature_set: str) -> Path | None:
+    if feature_set not in ("full", "no_leak_prone"):
+        return None
+    path = PRICE_MODEL_SOURCE_DIR / f"shap_summary_{feature_set}.png"
+    return path if path.exists() else None
+
+
+def get_detail_type_counts(db: Session) -> schema.DetailTypeCountsResponse:
+    """세부유형 분류가 실제로 몇 건씩 잡혔는지(예: 청소기 V8/V10/V6...) — 상위 N개로
+    자르는 price-distribution과 달리 전부 다 보여준다. 표본이 워낙 작아(카테고리당
+    많아야 수십 종) 페이지네이션 없이 한 번에 내려도 충분하다."""
+    rows = (
+        db.query(PriceModelListing.category, PriceModelListing.detail_type, func.count(PriceModelListing.id))
+        .group_by(PriceModelListing.category, PriceModelListing.detail_type)
+        .order_by(PriceModelListing.category, func.count(PriceModelListing.id).desc())
+        .all()
+    )
+    return schema.DetailTypeCountsResponse(
+        items=[schema.DetailTypeCountItem(category=c, detail_type=t, count=n) for c, t, n in rows]
+    )
 
 
 def get_price_model_metrics(db: Session) -> schema.PriceModelMetricsResponse:
