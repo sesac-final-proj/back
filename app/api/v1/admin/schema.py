@@ -30,6 +30,12 @@ class StatusDataCount(BaseModel):
     transaction_count: int
 
 
+class GuStatusDataCount(BaseModel):
+    gu_name: str
+    status: str
+    transaction_count: int
+
+
 class DailyTransactionCount(BaseModel):
     date: date
     transaction_count: int
@@ -91,7 +97,9 @@ class DashboardOverview(BaseModel):
     summary: DashboardSummary
     collection_trend: list[DailyTransactionCount]
     trade_status: list[StatusDataCount]
+    trade_status_by_gu: list[GuStatusDataCount] = Field(default_factory=list)
     region_ranking: list[RegionDataCount]
+    price_distribution: list[PriceBandCount]
     source: DashboardSource
     recent_transactions: list[RecentTransactionItem]
 
@@ -117,6 +125,51 @@ class KeywordInsight(BaseModel):
     medianPrice: int
     medianIndex: float
     completionRate: float
+
+
+class ProductClusterInsight(BaseModel):
+    cluster: str
+    item: str
+    model: str
+    condition: str
+    count: int
+    median: int
+    q1: int
+    q3: int
+    platformCount: int
+    completedRate: float
+    sampleCount: int | None = None
+    medianPrice: int | None = None
+    iqr: int | None = None
+    dispersion: float | None = None
+    productFamily: str | None = None
+    normalizedModel: str | None = None
+    productSignature: str | None = None
+    qualityStatus: str | None = "reliable"
+
+
+class ModelQualityInsight(BaseModel):
+    selectedModel: str = "RandomForest"
+    r2: float = 0.5000
+    mae: int = 56597
+    baselineR2: float = -0.1704
+    baselineMAE: int = 89595
+    validationMethod: str = "시간순 80/20 홀드아웃 및 Group/Random 분할 검증"
+    trainCount: int = 3816
+    testCount: int = 955
+
+
+class DataQualityInsight(BaseModel):
+    rowsBeforeCleaning: int = 6234
+    rowsAfterCleaning: int = 4771
+    removedRows: int = 1463
+    removedRate: float = 23.47
+    invalidPriceRows: int = 259
+    accessoryRows: int = 793
+    sparseClusterRate: float = 80.6
+    noisyClusterRate: float = 7.9
+    totalClusters: int = 624
+    reliableClusters: int = 38
 
 
 class ListingExample(BaseModel):
@@ -160,21 +213,24 @@ class FutureSourceSlot(BaseModel):
 class SourceValidation(BaseModel):
     sources: list[SourceValidationItem]
     futureSlots: list[FutureSourceSlot]
-    acceptance: list[str]
+    acceptance: list[str] = Field(default_factory=list)
 
 
 class AudienceInsightsResponse(BaseModel):
     asOf: datetime
     population: dict[str, int]
-    readerGuide: list[ReaderGuideItem]
-    selectionReasons: list[str]
-    distributions: list[DistributionInsight]
-    keywords: list[KeywordInsight]
-    examples: list[ListingExample]
+    modelQuality: ModelQualityInsight | None = None
+    dataQuality: DataQualityInsight | None = None
+    readerGuide: list[ReaderGuideItem] = Field(default_factory=list)
+    selectionReasons: list[str] = Field(default_factory=list)
+    distributions: list[DistributionInsight] = Field(default_factory=list)
+    productClusters: list[ProductClusterInsight] = Field(default_factory=list)
+    keywords: list[KeywordInsight] = Field(default_factory=list)
+    examples: list[ListingExample] = Field(default_factory=list)
     sourceValidation: SourceValidation
-    llmCategories: list[LlmCategory]
-    llm: dict[str, str]
-    interpretation: dict[str, str]
+    llmCategories: list[LlmCategory] = Field(default_factory=list)
+    llm: dict[str, str] = Field(default_factory=dict)
+    interpretation: dict[str, str] = Field(default_factory=dict)
 
 
 class DreamDistrictSummary(BaseModel):
@@ -200,27 +256,264 @@ class DreamStatusResponse(BaseModel):
     limitations: list[str]
 
 
-NoticeStatus = Literal["draft", "published", "hidden"]
+# --------------------------------------------------------------------------
+# 가격예측 모델 대시보드 (docs/issue/12-price-prediction-dashboard.md)
+# --------------------------------------------------------------------------
+
+
+NoticeService = Literal["dream", "carrot"]
+NoticeStatus = Literal["draft", "scheduled", "published", "ended", "hidden"]
+
+
+class PriceModelMetricItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    feature_set: str
+    model_key: str
+    label: str
+    rmse: float
+    mae: float
+    mape: float
+    r2: float
+    hit10: float
+    hit20: float
+    extra: dict | None = None
+
+
+class PriceModelMetricsResponse(BaseModel):
+    metrics: list[PriceModelMetricItem]
+
+
+class PriceModelListingItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    category: str
+    detail_type: str
+    gu: str
+    condition: str
+    status: str
+    chat_count: int
+    interest_count: int
+    view_count: float
+    manner_temp: float
+    title_length: int
+    days_since_listed: int
+    category_detail_median_price: float
+    price: int
+    price_log: float
+    title: str
+
+
+PriceModelListingListResponse = Page[PriceModelListingItem]
+
+
+class PriceDistributionTypeSummary(BaseModel):
+    type: str
+    count: int
+    median_price: float
+
+
+class PriceDistributionPoint(BaseModel):
+    type: str
+    price: int
+
+
+class PriceDistributionCategory(BaseModel):
+    category: str
+    sample_count: int
+    types: list[PriceDistributionTypeSummary]
+    points: list[PriceDistributionPoint]
+
+
+class PriceDistributionResponse(BaseModel):
+    categories: list[PriceDistributionCategory]
+
+
+class DetailTypeCountItem(BaseModel):
+    category: str
+    detail_type: str
+    count: int
+
+
+class DetailTypeCountsResponse(BaseModel):
+    items: list[DetailTypeCountItem]
+
+
+class PricePredictionItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    feature_set: str
+    category: str
+    detail_type: str
+    title: str
+    actual_price: int
+    predicted_price: int
+    error_rate: float
+
+
+class PricePlatformComparisonItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    platform: str
+    sample_count: int
+    mean_price: float
+    median_price: float
+    std_price: float
+    p25_price: float
+    p75_price: float
+
+
+class PricePlatformTestItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    platform_a: str
+    platform_b: str
+    median_a: float
+    median_b: float
+    diff_pct: float
+    p_value: float
+    significant: bool
+
+
+class PriceClusterItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    price_band: str
+    share: float
+    median_price: float
+    range_low: float
+    range_high: float
+    sample_count: int
+
+
+class PriceFeatureImportanceItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    feature_set: str
+    feature: str
+    gain: float
+    split: int
+
+
+class PriceModelChartsResponse(BaseModel):
+    predictions: list[PricePredictionItem]
+    platform_comparisons: list[PricePlatformComparisonItem]
+    platform_tests: list[PricePlatformTestItem]
+    clusters: list[PriceClusterItem]
+    feature_importance: list[PriceFeatureImportanceItem]
+
+
+# --------------------------------------------------------------------------
+# 가격 지역별 비교 대시보드 (crawling_Data 세션 산출물, price_model과 별개 기능)
+# --------------------------------------------------------------------------
+
+
+class PriceComparisonCategoryItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    sample_count: int
+    median_price: float
+    std_price: float
+    cv_price: float
+    price_trend_pct: float | None
+    frequency_grade: str
+    listings_per_month: float
+
+
+class PriceComparisonRegionItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    gu: str
+    sample_count: int
+    median_price: float
+    completion_rate: float
+    avg_manner_temp: float
+
+
+class PriceComparisonDetailTypeItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    detail_type: str
+    gu: str
+    sample_count: int
+    median_price: float
+    cv_price: float
+
+
+class PriceComparisonOverviewResponse(BaseModel):
+    categories: list[PriceComparisonCategoryItem]
+    regions: list[PriceComparisonRegionItem]
+    detail_types: list[PriceComparisonDetailTypeItem]
+
+
+class PriceComparisonSampleItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    gu: str
+    price: int
+
+
+class PriceComparisonSamplesResponse(BaseModel):
+    category: str
+    samples: list[PriceComparisonSampleItem]
 
 
 class NoticeListItem(BaseModel):
     model_config = {"from_attributes": True}
 
     id: int
-    source: str
-    region_name: str | None
+    service: NoticeService
     title: str
+    content: str
     status: NoticeStatus
-    collected_at: datetime
+    manual_status: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    display_order: int
+    alert_count: int
+    warning_reasons: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None = None
 
 
 class NoticeStatusUpdateRequest(BaseModel):
-    status: NoticeStatus
+    status: Literal["draft", "hidden"] | None = None
+
+
+class NoticeCreateRequest(BaseModel):
+    service: NoticeService
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    manual_status: Literal["hidden"] | None = None
+
+
+class NoticeUpdateRequest(BaseModel):
+    service: NoticeService | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    manual_status: Literal["hidden"] | None = None
+
+
+class NoticeOrderRequest(BaseModel):
+    notice_ids: list[int] = Field(min_length=1)
 
 
 class AlertCreatedResponse(BaseModel):
-    id: int
     notice_id: int
+    created_count: int
+    alert_count: int
     created_at: datetime
 
 

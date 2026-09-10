@@ -5,10 +5,15 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.api.v1.dream import schema
 from app.api.v1.real_estate.service import _fetch_json, _geocode
 from app.core.config import settings
+from app.core.pagination import Page
+from app.models.point import PointTransaction
+from app.models.user import User
 
 DISTRICT_SERVICES = {
     "강남구": "fcltOpenInfo_GN",
@@ -435,4 +440,54 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
         source="none",
         notice="해당 자치구의 아동복지시설 정보를 찾을 수 없습니다.",
     )
+
+
+# --------------------------------------------------------------------------
+# 꿈방울(포인트) 적립 — PRD "5. 핵심 기능 Flow > 꿈가지" 적립 예시 그대로.
+# 기부(차감) 로직은 아직 없음 — 지금은 적립/조회만.
+# --------------------------------------------------------------------------
+
+GENERAL_PAYMENT_POINT_DIVISOR = 100  # 일반결제 1%
+TRADE_POINT_DIVISOR = 1000  # 중고거래 0.1%
+TRADE_POINT_MIN_AMOUNT = 5000  # 중고거래는 5,000원 이상만 적립 대상
+
+
+def award_points(
+    db: Session, user_id: int, amount: int, source: str, related_id: int | None = None
+) -> int:
+    """결제 금액에서 꿈방울을 적립하고 적립액을 반환한다(0이면 기록도 안 남김).
+
+    호출부(wallet/service.py)가 이미 같은 트랜잭션 안에서 커밋하므로 여기선
+    db.add만 하고 커밋은 하지 않는다 — 결제와 적립이 항상 함께 성공/실패한다.
+    """
+    if source == "general_payment":
+        points = amount // GENERAL_PAYMENT_POINT_DIVISOR
+    elif source == "trade":
+        points = amount // TRADE_POINT_DIVISOR if amount >= TRADE_POINT_MIN_AMOUNT else 0
+    else:
+        raise ValueError(f"unknown point source: {source}")
+
+    if points <= 0:
+        return 0
+
+    db.add(PointTransaction(user_id=user_id, amount=points, source=source, related_id=related_id))
+    return points
+
+
+def get_point_balance(db: Session, user: User, page: int, size: int) -> schema.PointBalanceResponse:
+    balance = (
+        db.query(func.coalesce(func.sum(PointTransaction.amount), 0))
+        .filter(PointTransaction.user_id == user.id)
+        .scalar()
+    )
+    query = db.query(PointTransaction).filter(PointTransaction.user_id == user.id)
+    total = query.count()
+    rows = (
+        query.order_by(PointTransaction.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+    items = [schema.PointTransactionItem.model_validate(r) for r in rows]
+    return schema.PointBalanceResponse(balance=balance, transactions=Page(items=items, total=total))
 

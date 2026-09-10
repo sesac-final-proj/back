@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.chats.schema import MessageResponse
 from app.api.v1.wallet import schema, service
 from app.core.db import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/wallet", tags=["당근페이"])
@@ -45,6 +45,23 @@ def pay_by_qr(
     db: Session = Depends(get_db),
 ):
     return service.pay_by_qr(db, user, body)
+
+
+# QR 발급용 — 어드민이 가맹점 이름을 등록하고 받은 id로
+# "<프론트도메인>/carrot?pay=<id>" URL을 만들어 QR로 인쇄한다.
+@router.post("/stores", response_model=schema.StoreResponse, dependencies=[Depends(require_admin)])
+def create_store(body: schema.StoreCreateRequest, db: Session = Depends(get_db)):
+    return service.create_store(db, body)
+
+
+# 손님 앱이 QR(또는 그 URL)을 스캔한 뒤 결제 화면에 표시할 가맹점 이름을 조회.
+@router.get("/stores/{store_id}", response_model=schema.StoreResponse)
+def get_store(
+    store_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.get_store(db, store_id)
 
 
 @router.get("/transactions/{transaction_id}", response_model=schema.PaymentDetailResponse)

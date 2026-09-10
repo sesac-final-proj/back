@@ -2,13 +2,14 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.chats import service as chat_service
 from app.api.v1.chats import schema as chat_schema
+from app.api.v1.dream import service as dream_service
 from app.api.v1.wallet import schema
 from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.chat import ChatRoom
 from app.models.product import Product
 from app.models.user import User
-from app.models.wallet import WalletTransaction
+from app.models.wallet import Store, WalletTransaction
 
 
 def get_balance(user: User) -> schema.WalletBalanceResponse:
@@ -25,12 +26,36 @@ def charge_wallet(db: Session, user: User, amount: int) -> schema.WalletBalanceR
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
 
 
-# ponytail: QR 결제도 charge_wallet과 같은 이유로 mock — 가맹점은 DB에 없는 이름 문자열일
-# 뿐이라 wallet_transactions에 남길 상대(receiver)가 없다. 잔액 차감만 한다.
+def create_store(db: Session, data: schema.StoreCreateRequest) -> schema.StoreResponse:
+    """어드민이 QR 발급 전에 가맹점을 등록 — 여기서 받은 id로
+    "<프론트도메인>/carrot?pay=<id>" URL을 만들어 QR로 인쇄한다."""
+    store = Store(name=data.name)
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+    return schema.StoreResponse(id=store.id, name=store.name)
+
+
+def get_store(db: Session, store_id: int) -> schema.StoreResponse:
+    """QR(또는 그 URL)을 스캔한 손님 앱이 결제 화면에 표시할 이름을 조회."""
+    store = db.get(Store, store_id)
+    if store is None:
+        raise NotFoundError("가맹점을 찾을 수 없습니다.")
+    return schema.StoreResponse(id=store.id, name=store.name)
+
+
+# ponytail: QR 결제도 charge_wallet과 같은 이유로 mock — 가맹점은 User가 아니라 잔액을
+# 안 가진 Store rows일 뿐이라 wallet_transactions에 남길 상대(receiver)가 없다.
+# 손님 잔액 차감만 한다.
 def pay_by_qr(db: Session, user: User, data: schema.QrPayRequest) -> schema.WalletBalanceResponse:
+    if db.get(Store, data.store_id) is None:
+        raise NotFoundError("가맹점을 찾을 수 없습니다.")
     if user.wallet_balance < data.amount:
         raise AppError("잔액이 부족합니다.")
     user.wallet_balance -= data.amount
+    # 일반결제 1% 꿈방울 적립(PRD "꿈가지" 적립 예시) — related_id 없음(QR 결제는
+    # wallet_transactions에 기록을 안 남기는 mock이라 이을 대상이 없음).
+    dream_service.award_points(db, user.id, data.amount, "general_payment")
     db.commit()
     db.refresh(user)
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
@@ -83,10 +108,12 @@ def send_payment(
         balance_after=user.wallet_balance,
     )
     db.add(wallet_tx)
-    db.flush()  # wallet_tx.id 확보 (메시지에 연결)
+    db.flush()  # wallet_tx.id 확보 (메시지에 연결 + 꿈방울 related_id)
 
     message = chat_service._post_message(db, room, user.id, "PAYMENT", payment_id=wallet_tx.id)
     product.trade_status = "SOLD"
+    # 중고거래 0.1% 꿈방울 적립, 5,000원 미만은 적립 대상 아님(award_points 내부에서 처리).
+    dream_service.award_points(db, user.id, amount, "trade", related_id=wallet_tx.id)
     db.commit()
     db.refresh(message)
 

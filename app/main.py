@@ -8,11 +8,14 @@ from app.api.v1.admin.router import router as admin_router
 from app.api.v1.auth.router import legacy_router as legacy_auth_router
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.chats.router import router as chats_router
+from app.api.v1.community.router import router as community_router
 from app.api.v1.dream.router import router as dream_router
 from app.api.v1.local.router import router as local_router
 from app.api.v1.nicknames.router import router as nicknames_router
+from app.api.v1.notices.router import router as notices_router
 from app.api.v1.real_estate.router import router as real_estate_router
 from app.api.v1.safety.router import router as safety_router
+from app.api.v1.support.router import router as support_router
 from app.api.v1.trades.router import router as trades_router
 from app.api.v1.wallet.router import router as wallet_router
 from app.core.config import settings
@@ -53,6 +56,7 @@ async def log_requests(request: Request, call_next):
 app.include_router(admin_router)
 app.include_router(trades_router)
 app.include_router(chats_router)
+app.include_router(community_router)
 app.include_router(dream_router)
 app.include_router(local_router)
 app.include_router(auth_router)
@@ -60,7 +64,9 @@ app.include_router(legacy_auth_router)
 app.include_router(nicknames_router)
 app.include_router(real_estate_router)
 app.include_router(safety_router)
+app.include_router(support_router)
 app.include_router(wallet_router)
+app.include_router(notices_router)
 
 
 @app.get("/api")

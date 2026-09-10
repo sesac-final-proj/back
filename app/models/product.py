@@ -35,6 +35,10 @@ class Product(Base):
     trade_type: Mapped[str] = mapped_column(String(20))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     trade_place: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 지도에서 핀 찍어 고른 정확한 좌표 — trade_place(장소명 텍스트)만으로는 상세페이지가
+    # 매번 텍스트 재지오코딩을 해야 해서(부정확) 좌표를 같이 저장해둔다.
+    trade_place_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
+    trade_place_lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
     seller_nickname: Mapped[str | None] = mapped_column(String(100), nullable=True)
     seller_manner_temp: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0)

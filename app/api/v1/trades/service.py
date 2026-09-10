@@ -29,6 +29,8 @@ def create_product(db: Session, user: User, data: schema.ProductCreateRequest) -
         description=data.description,
         detail_category=data.detail_category,
         trade_place=data.trade_place,
+        trade_place_lat=data.trade_place_lat,
+        trade_place_lng=data.trade_place_lng,
         region_id=user.region_id,
         created_by=user.id,
         trade_status="SALE",
@@ -190,6 +192,8 @@ def get_product_detail(db: Session, product_id: int, user: User | None = None) -
         search_keyword=product.search_keyword,
         description=product.description,
         trade_place=product.trade_place,
+        trade_place_lat=float(product.trade_place_lat) if product.trade_place_lat is not None else None,
+        trade_place_lng=float(product.trade_place_lng) if product.trade_place_lng is not None else None,
         seller_nickname=seller_nickname,
         seller_manner_temp=(
             float(product.seller_manner_temp) if product.seller_manner_temp is not None else None

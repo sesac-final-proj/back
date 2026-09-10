@@ -20,17 +20,19 @@ def main():
     region_a = Region(dong_code="__UR_SELFCHECK_A__", dong_name="가동", gu_name="자가검증구", lat=0.0, lng=0.0)
     region_b = Region(dong_code="__UR_SELFCHECK_B__", dong_name="나동", gu_name="자가검증구", lat=0.0, lng=0.0)
     region_c = Region(dong_code="__UR_SELFCHECK_C__", dong_name="다동", gu_name="자가검증구", lat=0.0, lng=0.0)
+    region_d = Region(dong_code="__UR_SELFCHECK_D__", dong_name="라동", gu_name="자가검증구", lat=0.0, lng=0.0)
     user = User(
         email="__user_region_selfcheck__@example.com",
         password_hash=hash_password("x"),
         nickname="ur_selfcheck",
         role=UserRole.USER,
     )
-    db.add_all([region_a, region_b, region_c, user])
+    db.add_all([region_a, region_b, region_c, region_d, user])
     db.commit()
     db.refresh(region_a)
     db.refresh(region_b)
     db.refresh(region_c)
+    db.refresh(region_d)
     db.refresh(user)
 
     try:
@@ -60,12 +62,15 @@ def main():
         except HTTPException as e:
             assert e.status_code == 409
 
-        # 4) 중복 동네 재등록 → 409
+        # 4) 중복 동네 재등록 → 409, 그것도 "이미 2개 등록했어요"가 아니라 "이미 등록된
+        # 동네입니다"여야 한다 — 이미 2개 다 찬 상태에서 그중 하나를 다시 고른 거라
+        # 인원수 초과 메시지가 뜨면 "분명 등록했는데 왜 안 되냐"는 혼란을 준다.
         try:
             auth_service.add_user_region(db, user, UserRegionCreateRequest(region_id=region_a.id, radius_m=500))
             raise AssertionError("중복 동네 등록은 409여야 한다")
         except HTTPException as e:
             assert e.status_code == 409
+            assert e.detail == "이미 등록된 동네입니다."
 
         # 5) 없는 지역 → 404
         try:
@@ -128,6 +133,19 @@ def main():
         db.refresh(user)
         assert user.region_id == region_a.id and user.radius_m == 999
 
+        # 12) 하위 호환 PUT /me/region — 이미 2개(a,b) 다 찬 상태에서 완전히 새로운
+        # 3번째 동네(d)로 바꿔도 409 없이 성공해야 한다(버그 리포트: "동네 2개 등록했다"는
+        # 에러가 뜨는데 정작 프론트엔 여러 동네 등록 UI가 없어서 사용자가 이유를 모름).
+        # 대표 아니던 슬롯(b)이 자동으로 밀려나고 그 자리에 d가 대표로 들어간다.
+        auth_service.update_region(db, user, RegionUpdateRequest(region_id=region_d.id, radius_m=1500))
+        listed = auth_service.list_user_regions(db, user)
+        assert {(i.region_id, i.is_primary) for i in listed.items} == {
+            (region_a.id, False),
+            (region_d.id, True),
+        }
+        db.refresh(user)
+        assert user.region_id == region_d.id and user.radius_m == 1500
+
         print("user-regions self-check OK")
     finally:
         db.query(UserRegion).filter_by(user_id=user.id).delete()
@@ -135,6 +153,7 @@ def main():
         db.delete(region_a)
         db.delete(region_b)
         db.delete(region_c)
+        db.delete(region_d)
         db.commit()
         db.close()
 
