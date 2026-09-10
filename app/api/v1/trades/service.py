@@ -8,7 +8,7 @@ from app.api.v1.trades import schema
 from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.models.analysis import Analysis, AnalysisResult
-from app.models.chat import ChatRoom
+from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.favorite import ProductFavorite
 from app.models.product import Product
 from app.models.recently_viewed import RecentlyViewedProduct
@@ -380,8 +380,46 @@ def delete_product(db: Session, user: User, product_id: int) -> None:
             synchronize_session=False
         )
         db.query(Analysis).filter(Analysis.id.in_(analysis_ids)).delete(synchronize_session=False)
-    # 채팅 기록은 보존하고 상품 참조만 끊는다 (ChatRoom.product_id는 nullable).
-    db.query(ChatRoom).filter(ChatRoom.product_id == product_id).update({ChatRoom.product_id: None})
+    # 채팅방: 그 방에서 송금(WalletTransaction)이 한 번도 없었으면 통째로 지운다. 송금
+    # 기록이 있으면 못 지운다 — WalletTransaction.chat_room_id가 NOT NULL FK라(돈이
+    # 실제로 오간 이력이라 nullable로 안 둠) 방을 지우면 그 이력까지 날아가거나 FK
+    # 위반이 난다. 그런 방은 기존처럼 상품 참조만 끊어서 보존.
+    chat_room_ids = [r[0] for r in db.query(ChatRoom.id).filter(ChatRoom.product_id == product_id).all()]
+    if chat_room_ids:
+        rooms_with_payment = {
+            r[0]
+            for r in db.query(WalletTransaction.chat_room_id)
+            .filter(WalletTransaction.chat_room_id.in_(chat_room_ids))
+            .distinct()
+            .all()
+        }
+        deletable_room_ids = [rid for rid in chat_room_ids if rid not in rooms_with_payment]
+        preserved_room_ids = [rid for rid in chat_room_ids if rid in rooms_with_payment]
+
+        if deletable_room_ids:
+            image_keys = [
+                row[0]
+                for row in db.query(ChatMessage.image_object_key)
+                .filter(
+                    ChatMessage.chat_room_id.in_(deletable_room_ids),
+                    ChatMessage.image_object_key.is_not(None),
+                )
+                .all()
+            ]
+            for key in image_keys:
+                storage.delete_object(key)
+            db.query(ChatMessage).filter(ChatMessage.chat_room_id.in_(deletable_room_ids)).delete(
+                synchronize_session=False
+            )
+            db.query(ChatRoomParticipant).filter(
+                ChatRoomParticipant.chat_room_id.in_(deletable_room_ids)
+            ).delete(synchronize_session=False)
+            db.query(ChatRoom).filter(ChatRoom.id.in_(deletable_room_ids)).delete(synchronize_session=False)
+
+        if preserved_room_ids:
+            db.query(ChatRoom).filter(ChatRoom.id.in_(preserved_room_ids)).update(
+                {ChatRoom.product_id: None}, synchronize_session=False
+            )
     # 송금 기록(당근페이)도 돈이 실제로 오간 이력이라 보존, 참조만 끊는다.
     db.query(WalletTransaction).filter(WalletTransaction.product_id == product_id).update(
         {WalletTransaction.product_id: None}
