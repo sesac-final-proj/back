@@ -1,6 +1,7 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1.admin import schema, service
@@ -70,3 +71,16 @@ def price_model_price_distribution(
 @router.get("/price-model/charts", response_model=schema.PriceModelChartsResponse)
 def price_model_charts(db: Session = Depends(get_db)):
     return service.get_price_model_charts(db)
+
+
+@router.get("/price-model/detail-type-counts", response_model=schema.DetailTypeCountsResponse)
+def price_model_detail_type_counts(db: Session = Depends(get_db)):
+    return service.get_detail_type_counts(db)
+
+
+@router.get("/price-model/shap-summary")
+def price_model_shap_summary(feature_set: Literal["full", "no_leak_prone"] = "full"):
+    path = service.get_shap_summary_path(feature_set)
+    if path is None:
+        raise HTTPException(status_code=404, detail="SHAP 요약 이미지가 없습니다.")
+    return FileResponse(path, media_type="image/png")

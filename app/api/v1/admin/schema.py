@@ -319,6 +319,16 @@ class PriceDistributionResponse(BaseModel):
     categories: list[PriceDistributionCategory]
 
 
+class DetailTypeCountItem(BaseModel):
+    category: str
+    detail_type: str
+    count: int
+
+
+class DetailTypeCountsResponse(BaseModel):
+    items: list[DetailTypeCountItem]
+
+
 class PricePredictionItem(BaseModel):
     model_config = {"from_attributes": True}
 

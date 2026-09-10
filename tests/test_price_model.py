@@ -62,6 +62,16 @@ def main():
         empty = admin_service.get_price_distribution(db, "존재하지않는카테고리", sample=10)
         assert empty.categories == []
 
+        detail_counts = admin_service.get_detail_type_counts(db)
+        assert len(detail_counts.items) > 0
+        assert all(item.count > 0 for item in detail_counts.items)
+
+        # SHAP 요약 PNG — seed_price_model_data.py의 DEFAULT_SOURCE_DIR와 같은
+        # analyzer/outputs/viz/ 폴더에서 파일 그대로 서빙.
+        assert admin_service.get_shap_summary_path("full") is not None
+        assert admin_service.get_shap_summary_path("no_leak_prone") is not None
+        assert admin_service.get_shap_summary_path("bogus") is None
+
         charts = admin_service.get_price_model_charts(db)
         assert len(charts.predictions) > 0
         assert len(charts.platform_comparisons) > 0
@@ -89,6 +99,13 @@ def main():
         )
         assert ok.status_code == 200
         assert "items" in ok.json() and "total" in ok.json()
+
+        shap_ok = client.get(
+            "/api/v1/admin/price-model/shap-summary?feature_set=full",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert shap_ok.status_code == 200
+        assert shap_ok.headers["content-type"] == "image/png"
 
         print("price-model self-check OK")
     finally:

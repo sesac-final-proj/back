@@ -298,6 +298,33 @@ def get_dream_status() -> schema.DreamStatusResponse:
 # --------------------------------------------------------------------------
 
 
+# SHAP summary plot은 matplotlib이 그린 PNG라 DB에 넣지 않고 analyzer 핸드오프
+# 폴더(outputs/viz/)에서 파일 그대로 서빙한다 — seed 스크립트의 DEFAULT_SOURCE_DIR와 같은 경로.
+PRICE_MODEL_SOURCE_DIR = Path(__file__).resolve().parents[5] / "analyzer" / "outputs" / "viz"
+
+
+def get_shap_summary_path(feature_set: str) -> Path | None:
+    if feature_set not in ("full", "no_leak_prone"):
+        return None
+    path = PRICE_MODEL_SOURCE_DIR / f"shap_summary_{feature_set}.png"
+    return path if path.exists() else None
+
+
+def get_detail_type_counts(db: Session) -> schema.DetailTypeCountsResponse:
+    """세부유형 분류가 실제로 몇 건씩 잡혔는지(예: 청소기 V8/V10/V6...) — 상위 N개로
+    자르는 price-distribution과 달리 전부 다 보여준다. 표본이 워낙 작아(카테고리당
+    많아야 수십 종) 페이지네이션 없이 한 번에 내려도 충분하다."""
+    rows = (
+        db.query(PriceModelListing.category, PriceModelListing.detail_type, func.count(PriceModelListing.id))
+        .group_by(PriceModelListing.category, PriceModelListing.detail_type)
+        .order_by(PriceModelListing.category, func.count(PriceModelListing.id).desc())
+        .all()
+    )
+    return schema.DetailTypeCountsResponse(
+        items=[schema.DetailTypeCountItem(category=c, detail_type=t, count=n) for c, t, n in rows]
+    )
+
+
 def get_price_model_metrics(db: Session) -> schema.PriceModelMetricsResponse:
     rows = db.query(PriceModelMetric).order_by(PriceModelMetric.feature_set, PriceModelMetric.model_key).all()
     return schema.PriceModelMetricsResponse(
