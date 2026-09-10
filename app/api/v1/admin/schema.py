@@ -407,6 +407,64 @@ class PriceModelChartsResponse(BaseModel):
     feature_importance: list[PriceFeatureImportanceItem]
 
 
+# --------------------------------------------------------------------------
+# 가격 지역별 비교 대시보드 (crawling_Data 세션 산출물, price_model과 별개 기능)
+# --------------------------------------------------------------------------
+
+
+class PriceComparisonCategoryItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    sample_count: int
+    median_price: float
+    std_price: float
+    cv_price: float
+    price_trend_pct: float | None
+    frequency_grade: str
+    listings_per_month: float
+
+
+class PriceComparisonRegionItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    gu: str
+    sample_count: int
+    median_price: float
+    completion_rate: float
+    avg_manner_temp: float
+
+
+class PriceComparisonDetailTypeItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    category: str
+    detail_type: str
+    gu: str
+    sample_count: int
+    median_price: float
+    cv_price: float
+
+
+class PriceComparisonOverviewResponse(BaseModel):
+    categories: list[PriceComparisonCategoryItem]
+    regions: list[PriceComparisonRegionItem]
+    detail_types: list[PriceComparisonDetailTypeItem]
+
+
+class PriceComparisonSampleItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    gu: str
+    price: int
+
+
+class PriceComparisonSamplesResponse(BaseModel):
+    category: str
+    samples: list[PriceComparisonSampleItem]
+
+
 class NoticeListItem(BaseModel):
     model_config = {"from_attributes": True}
 

@@ -87,6 +87,26 @@ def price_model_shap_summary(feature_set: Literal["full", "no_leak_prone"] = "fu
     return FileResponse(path, media_type="image/png")
 
 
+# --------------------------------------------------------------------------
+# 가격 지역별 비교 대시보드 (crawling_Data 세션 산출물, price_model과 별개 기능)
+# --------------------------------------------------------------------------
+
+
+@router.get("/price-comparison/overview", response_model=schema.PriceComparisonOverviewResponse)
+def price_comparison_overview(db: Session = Depends(get_db)):
+    return service.get_price_comparison_overview(db)
+
+
+@router.get("/price-comparison/samples", response_model=schema.PriceComparisonSamplesResponse)
+def price_comparison_samples(
+    category: str,
+    gu: str | None = None,
+    sample: int = Query(default=2000, ge=1, le=10000),
+    db: Session = Depends(get_db),
+):
+    return service.get_price_comparison_samples(db, category, gu, sample)
+
+
 @router.get("/notices", response_model=schema.NoticeListResponse)
 def notices(
     q: str | None = None,
