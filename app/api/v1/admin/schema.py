@@ -201,27 +201,59 @@ class DreamStatusResponse(BaseModel):
     limitations: list[str]
 
 
-NoticeStatus = Literal["draft", "published", "hidden"]
+NoticeService = Literal["dream", "carrot"]
+NoticeStatus = Literal["draft", "scheduled", "published", "ended", "hidden"]
 
 
 class NoticeListItem(BaseModel):
     model_config = {"from_attributes": True}
 
     id: int
-    source: str
-    region_name: str | None
+    service: NoticeService
     title: str
+    content: str
     status: NoticeStatus
-    collected_at: datetime
+    manual_status: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    display_order: int
+    alert_count: int
+    warning_reasons: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None = None
 
 
 class NoticeStatusUpdateRequest(BaseModel):
-    status: NoticeStatus
+    status: Literal["draft", "hidden"] | None = None
+
+
+class NoticeCreateRequest(BaseModel):
+    service: NoticeService
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    manual_status: Literal["hidden"] | None = None
+
+
+class NoticeUpdateRequest(BaseModel):
+    service: NoticeService | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    manual_status: Literal["hidden"] | None = None
+
+
+class NoticeOrderRequest(BaseModel):
+    notice_ids: list[int] = Field(min_length=1)
 
 
 class AlertCreatedResponse(BaseModel):
-    id: int
     notice_id: int
+    created_count: int
+    alert_count: int
     created_at: datetime
 
 
