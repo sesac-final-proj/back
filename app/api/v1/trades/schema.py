@@ -22,6 +22,8 @@ class ProductCreateRequest(BaseModel):
     description: str | None = None
     detail_category: str | None = None
     trade_place: str | None = None
+    trade_place_lat: float | None = None
+    trade_place_lng: float | None = None
 
 
 class ProductCreated(BaseModel):
@@ -61,6 +63,8 @@ class ProductDetailResponse(ProductListItem):
     search_keyword: str | None
     description: str | None
     trade_place: str | None
+    trade_place_lat: float | None = None
+    trade_place_lng: float | None = None
     seller_nickname: str | None
     seller_manner_temp: float | None
     is_mine: bool = False
@@ -97,6 +101,8 @@ class ProductUpdateRequest(BaseModel):
     description: str | None = None
     detail_category: str | None = None
     trade_place: str | None = None
+    trade_place_lat: float | None = None
+    trade_place_lng: float | None = None
 
 
 class FavoriteToggleResponse(BaseModel):
