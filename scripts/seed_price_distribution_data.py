@@ -179,7 +179,11 @@ def seed_listing_samples(db, rows: list[dict]) -> int:
         for gu, grows in by_gu.items():
             sampled = rng.sample(grows, min(MAX_SAMPLES_PER_GU, len(grows)))
             for r in sampled:
-                db.add(PriceListingSample(category=category, gu=gu, price=int(r["가격원"])))
+                db.add(
+                    PriceListingSample(
+                        category=category, gu=gu, price=int(r["가격원"]), interest_count=int(r["관심수"])
+                    )
+                )
             total += len(sampled)
     return total
 

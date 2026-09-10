@@ -458,6 +458,7 @@ class PriceComparisonSampleItem(BaseModel):
 
     gu: str
     price: int
+    interest_count: int
 
 
 class PriceComparisonSamplesResponse(BaseModel):
