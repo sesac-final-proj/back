@@ -386,12 +386,33 @@ def oauth_login_url(provider: str) -> dict:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="지원하지 않는 provider입니다.")
 
 
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+from urllib.parse import urlencode
+
+
 def _post_form(url: str, data: dict, headers: dict | None = None) -> dict:
     body = urlencode(data).encode()
     request = Request(url, data=body, headers=headers or {}, method="POST")
     try:
         with urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode())
+    except HTTPError as exc:
+        try:
+            err_data = json.loads(exc.read().decode())
+            err_desc = err_data.get("error_description") or err_data.get("error") or ""
+            err_code = str(err_data.get("error_code") or "")
+            if "KOE320" in err_code or "authorization code not found" in err_desc or "invalid_grant" in err_desc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="카카오 인가 코드가 만료되었거나 이미 사용되었습니다. 다시 로그인해 주세요."
+                ) from exc
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"OAuth API 요청에 실패했습니다: {err_desc or exc}"
+            ) from exc
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OAuth API 요청에 실패했습니다.") from exc
     except (OSError, URLError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OAuth API 요청에 실패했습니다.") from exc
 
@@ -401,6 +422,16 @@ def _get_json(url: str, headers: dict) -> dict:
     try:
         with urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode())
+    except HTTPError as exc:
+        try:
+            err_data = json.loads(exc.read().decode())
+            err_desc = err_data.get("error_description") or err_data.get("error") or ""
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"OAuth 사용자 정보 조회에 실패했습니다: {err_desc or exc}"
+            ) from exc
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OAuth API 요청에 실패했습니다.") from exc
     except (OSError, URLError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OAuth API 요청에 실패했습니다.") from exc
 
