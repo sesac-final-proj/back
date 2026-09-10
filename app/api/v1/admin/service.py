@@ -18,6 +18,12 @@ from app.models.price_model import (
     PricePlatformTest,
     PricePrediction,
 )
+from app.models.price_distribution import (
+    PriceCategorySummary,
+    PriceDetailTypeStat,
+    PriceListingSample,
+    PriceRegionStat,
+)
 from app.models.region import Region
 from app.models.transaction import Transaction
 from app.api.v1.dream.service import CSV_PATH, JSON_412_PATH, JSON_PARSED_PATH, DISTRICT_SERVICES
@@ -404,4 +410,45 @@ def get_price_model_charts(db: Session) -> schema.PriceModelChartsResponse:
         platform_tests=[schema.PricePlatformTestItem.model_validate(r) for r in tests],
         clusters=[schema.PriceClusterItem.model_validate(r) for r in clusters],
         feature_importance=[schema.PriceFeatureImportanceItem.model_validate(r) for r in feature_importance],
+    )
+
+
+# --------------------------------------------------------------------------
+# 가격 지역별 비교 대시보드 (crawling_Data 세션 산출물, price_model과 별개 기능)
+# --------------------------------------------------------------------------
+
+
+def get_price_comparison_overview(db: Session) -> schema.PriceComparisonOverviewResponse:
+    """카테고리 요약/지역별/세부유형별 통계 — scripts/seed_price_distribution_data.py가
+    미리 집계해둔 스냅샷 그대로 반환(전부 소규모라 페이지네이션 없이 한 번에)."""
+    categories = db.query(PriceCategorySummary).order_by(PriceCategorySummary.category).all()
+    regions = db.query(PriceRegionStat).order_by(PriceRegionStat.category, PriceRegionStat.gu).all()
+    detail_types = (
+        db.query(PriceDetailTypeStat)
+        .order_by(PriceDetailTypeStat.category, PriceDetailTypeStat.detail_type, PriceDetailTypeStat.gu)
+        .all()
+    )
+
+    return schema.PriceComparisonOverviewResponse(
+        categories=[schema.PriceComparisonCategoryItem.model_validate(r) for r in categories],
+        regions=[schema.PriceComparisonRegionItem.model_validate(r) for r in regions],
+        detail_types=[schema.PriceComparisonDetailTypeItem.model_validate(r) for r in detail_types],
+    )
+
+
+def get_price_comparison_samples(
+    db: Session, category: str, gu: str | None, sample: int
+) -> schema.PriceComparisonSamplesResponse:
+    """카테고리 하나의 매물 표본(구별 스웜 플롯용) — seed 단계에서 이미 이상치 제외/
+    구별 최대 600건으로 추려둔 값이라, sample은 그 이상을 추가로 솎아낼 때만 쓰인다."""
+    query = db.query(PriceListingSample).filter(PriceListingSample.category == category)
+    if gu:
+        query = query.filter(PriceListingSample.gu == gu)
+    rows = query.all()
+    if len(rows) > sample:
+        rows = random.sample(rows, sample)
+
+    return schema.PriceComparisonSamplesResponse(
+        category=category,
+        samples=[schema.PriceComparisonSampleItem.model_validate(r) for r in rows],
     )

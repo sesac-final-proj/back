@@ -13,6 +13,13 @@ from app.models.price_model import (  # noqa: F401
     PricePlatformTest,
     PricePrediction,
 )
+from app.models.price_distribution import (  # noqa: F401
+    PriceCategorySummary,
+    PriceDetailTypeStat,
+    PriceDongStat,
+    PriceListingSample,
+    PriceRegionStat,
+)
 from app.models.product import Product  # noqa: F401
 from app.models.recently_viewed import RecentlyViewedProduct  # noqa: F401
 from app.models.region import Region  # noqa: F401
