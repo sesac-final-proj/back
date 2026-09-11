@@ -119,6 +119,11 @@ def price_comparison_samples(
     return service.get_price_comparison_samples(db, category, gu, sample)
 
 
+@router.get("/price-comparison/dong-map", response_model=schema.PriceDongMapResponse)
+def price_comparison_dong_map(category: str, db: Session = Depends(get_db)):
+    return service.get_price_dong_map(db, category)
+
+
 @router.get("/notices", response_model=schema.NoticeListResponse)
 def notices(
     q: str | None = None,

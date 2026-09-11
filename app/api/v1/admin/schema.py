@@ -437,6 +437,7 @@ class PriceComparisonCategoryItem(BaseModel):
     price_trend_pct: float | None
     frequency_grade: str
     listings_per_month: float
+    completion_rate: float
 
 
 class PriceComparisonRegionItem(BaseModel):
@@ -448,6 +449,8 @@ class PriceComparisonRegionItem(BaseModel):
     median_price: float
     completion_rate: float
     avg_manner_temp: float
+    cv_price: float
+    frequency_grade: str
 
 
 class PriceComparisonDetailTypeItem(BaseModel):
@@ -472,11 +475,30 @@ class PriceComparisonSampleItem(BaseModel):
 
     gu: str
     price: int
+    interest_count: int
 
 
 class PriceComparisonSamplesResponse(BaseModel):
     category: str
     samples: list[PriceComparisonSampleItem]
+
+
+class PriceDongStatItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    gu: str
+    dong: str
+    sample_count: int
+    median_price: float
+    within_pct: float
+    below_pct: float
+    above_pct: float
+    dev_pct: float
+
+
+class PriceDongMapResponse(BaseModel):
+    category: str
+    dongs: list[PriceDongStatItem]
 
 
 class NoticeListItem(BaseModel):

@@ -21,6 +21,7 @@ from app.models.price_model import (
 from app.models.price_distribution import (
     PriceCategorySummary,
     PriceDetailTypeStat,
+    PriceDongStat,
     PriceListingSample,
     PriceRegionStat,
 )
@@ -713,4 +714,19 @@ def get_price_comparison_samples(
     return schema.PriceComparisonSamplesResponse(
         category=category,
         samples=[schema.PriceComparisonSampleItem.model_validate(r) for r in rows],
+    )
+
+
+def get_price_dong_map(db: Session, category: str) -> schema.PriceDongMapResponse:
+    """동네 시세지도 — 카테고리 하나의 동별 시세 스냅샷(seed_dong_stats 산출물
+    그대로 반환, 표본 10건 미만 동은 seed 단계에서 이미 제외됨)."""
+    rows = (
+        db.query(PriceDongStat)
+        .filter(PriceDongStat.category == category)
+        .order_by(PriceDongStat.gu, PriceDongStat.dong)
+        .all()
+    )
+    return schema.PriceDongMapResponse(
+        category=category,
+        dongs=[schema.PriceDongStatItem.model_validate(r) for r in rows],
     )
