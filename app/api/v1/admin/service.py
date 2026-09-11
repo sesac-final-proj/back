@@ -356,6 +356,32 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         .limit(8)
     ).all()
 
+    # SeoulGuMap 구 탭 옆 "카테고리 구성" 패널이 탭에 맞춰 바뀌도록 — 전체 category_counts와
+    # 별개로 구별로도 집계해둔다. 표본이 작아(구 3개 × 카테고리 6개 이하) limit 없이 다 내려도 됨.
+    category_by_gu_rows = db.execute(
+        select(
+            Region.gu_name,
+            Transaction.category,
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.gu_name, Transaction.category)
+        .order_by(Region.gu_name, func.count(Transaction.id).desc())
+    ).all()
+
+    # 동 단위 선택(SeoulGuMap에서 동 클릭)에도 카테고리 구성이 따라 바뀌도록 — region_counts와
+    # 같은 "구 동" 포맷 키를 쓴다. 매칭된 지역이 83개뿐이라 이것도 limit 없이 다 내림.
+    category_by_region_rows = db.execute(
+        select(
+            (Region.gu_name + " " + Region.dong_name).label("region_name"),
+            Transaction.category,
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.id, Region.gu_name, Region.dong_name, Transaction.category)
+        .order_by(Region.gu_name, Region.dong_name, func.count(Transaction.id).desc())
+    ).all()
+
     return schema.DataStatusResponse(
         total_transactions=total_transactions,
         priced_transactions=priced_transactions,
@@ -391,6 +417,14 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
                 average_price=round(float(category_average)) if category_average is not None else None,
             )
             for category, count, priced_count, completed_count, category_average in category_rows
+        ],
+        category_counts_by_gu=[
+            schema.GuCategoryDataCount(gu_name=gu_name, category=category, transaction_count=count)
+            for gu_name, category, count in category_by_gu_rows
+        ],
+        category_counts_by_region=[
+            schema.RegionCategoryDataCount(region_name=region_name, category=category, transaction_count=count)
+            for region_name, category, count in category_by_region_rows
         ],
         recent_transactions=[
             schema.RecentTransactionItem(
