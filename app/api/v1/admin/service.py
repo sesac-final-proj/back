@@ -489,11 +489,11 @@ def get_dream_status() -> schema.DreamStatusResponse:
         facilityTypes=[schema.DreamFacilityTypeSummary(facilityType=name, count=count) for name, count in type_counts.most_common(10)],
         sourceFiles=sources,
         donationDataConnected=False,
-        donationMetricStatus="기부 설정·내역·집행 저장 API 미구현",
+        donationMetricStatus="구별 포인트는 포인트 원장 API로 조회 · 실제 기부 집행액은 별도 원장 필요",
         limitations=[
             "현재 시설 데이터는 운영 대상 탐색용이며 기부 실적 데이터가 아닙니다.",
             "시설 유형 구성은 세부 유형이 있는 CSV·파싱 JSON 범위이며 412개 전체의 유형 분포가 아닙니다.",
-            "프론트의 donationCount, currentAmount, targetAmount는 현재 0 기본값입니다.",
+            "구별 포인트 적립·차감·잔액은 사용자 현재 대표 동네 기준으로 포인트 원장에서 집계합니다.",
             "기부 성과 분석은 거래-기부 원장과 집행 원장이 연결된 뒤 활성화해야 합니다.",
         ],
     )

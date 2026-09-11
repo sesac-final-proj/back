@@ -78,6 +78,7 @@ if not CSV_PATH.exists():
 
 JSON_412_PATH = PROJECT_ROOT / "all_seoul_centers_412.json"
 JSON_PARSED_PATH = PROJECT_ROOT / "all_districts_parsed.json"
+REPRESENTATIVE_25_PATH = PROJECT_ROOT / "final_25_districts_representative_centers.json"
 
 OFFICIAL_FACILITY_URL = "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/BD_selectFcltyInfoManage.do"
 
@@ -97,7 +98,7 @@ def _facility_trust_checklist(
         "name": "시설명 확인" if name else "시설명 누락",
         "address": "주소 확인" if address else "주소 누락",
         "phone": "전화번호 확인" if phone else "전화번호 미확인",
-        "homepage": "공식 상세 링크 확인" if homepage_url and homepage_url != OFFICIAL_FACILITY_URL else "공식 목록 링크",
+        "homepage": "공식 상세 링크 확인" if homepage_url and homepage_url != OFFICIAL_FACILITY_URL and homepage_url not in ("http://", "https://") else "공식 목록 링크",
         "operation": "운영 상태 확인" if operation_status else "운영 상태 미확인",
         "coordinate": "좌표 확인" if lat is not None and lng is not None else "좌표 미확인",
         "official_match": "412개 전처리 시설과 매칭" if matched_official_center else "전처리 매칭 없음",
@@ -196,6 +197,16 @@ def _load_412_centers() -> list[dict]:
         return []
 
 
+def _load_representative_centers() -> list[dict]:
+    if not REPRESENTATIVE_25_PATH.exists():
+        return []
+    try:
+        with REPRESENTATIVE_25_PATH.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
 def _load_parsed_centers() -> dict[str, list[dict]]:
     if not JSON_PARSED_PATH.exists():
         return {}
@@ -253,10 +264,19 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
     if district not in DISTRICT_SERVICES:
         raise HTTPException(status_code=400, detail="지원하지 않는 자치구입니다.")
 
+    rep_centers = _load_representative_centers()
     centers_412 = _load_412_centers()
+    parsed_centers = _load_parsed_centers().get(district, [])
     default_lat, default_lng = DISTRICT_DEFAULT_COORDS.get(district, (37.5665, 126.9780))
 
-    # 1. Open API 조회 시도 (API 키가 유효하거나 mock 등으로 응답이 존재할 때)
+    rep = next((r for r in rep_centers if r.get("district") == district), None)
+    rep_hp = None
+    if rep:
+        rep_hp = (rep.get("homepage") or "").strip()
+        if not rep_hp or rep_hp in ("http://", "https://"):
+            rep_hp = (rep.get("detail_url") or "").strip() or None
+
+    # 1. Open API 조회 시도
     try:
         rows, source = _rows(district)
         child_rows = [
@@ -288,20 +308,23 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                     ),
                     None,
                 )
-                if not homepage_url and row.get("FCLT_CD"):
-                    homepage_url = (
-                        "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/"
-                        f"BD_selectFcltyInfoManage.do?q_fcltyId={quote(str(row['FCLT_CD']), safe='')}&q_fclty=1003"
-                    )
-                if not homepage_url:
-                    homepage_url = OFFICIAL_FACILITY_URL
+                if homepage_url in ("http://", "https://"):
+                    homepage_url = None
 
-                phone = str(row.get("FCLT_TEL_NO") or "").strip() or None
-                operation_status = str(row.get("FCLT_STATUS_NM") or "").strip() or None
                 match_412 = next(
                     (center for center in centers_412 if center.get("district") == district and (center.get("name") in name or name in center.get("name"))),
                     None,
                 )
+                if not homepage_url:
+                    if match_412 and match_412.get("detail_url"):
+                        homepage_url = match_412["detail_url"]
+                    elif rep and (rep.get("name") in name or name in rep.get("name")):
+                        homepage_url = rep_hp
+                    else:
+                        homepage_url = rep_hp or OFFICIAL_FACILITY_URL
+
+                phone = str(row.get("FCLT_TEL_NO") or "").strip() or None
+                operation_status = str(row.get("FCLT_STATUS_NM") or "").strip() or None
                 items.append(
                     _build_facility_item(
                         identity=identity,
@@ -331,89 +354,108 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
     except Exception:
         pass
 
-    # 2. Fallback to CSV
-    csv_rows = _csv_rows(district)
-    if csv_rows:
-        items = []
-        for i, row in enumerate(csv_rows[:limit]):
-            address = (row.get("도로명전체주소") or row.get("소재지전체주소") or "").strip()
-            name = (row.get("사업장명") or "").strip()
-            identity = f"{name}|{address}|{row.get('인허가번호', '')}"
+    # 2. 25개 자치구 대표 센터 + 412개 서울 아동복지센터 기반 구성
+    items = []
+    seen_names = set()
 
-            coordinate = _geocode(address) if address else None
-            if coordinate:
-                lat, lng = coordinate
-            else:
-                try:
-                    lng = float(row["위치정보(X)"]) if row.get("위치정보(X)") else None
-                    lat = float(row["위치정보(Y)"]) if row.get("위치정보(Y)") else None
-                except ValueError:
-                    lat, lng = None, None
+    if rep:
+        rep_name = rep.get("name", "").strip()
+        rep_addr = rep.get("address", "").strip()
+        rep_tel = rep.get("tel", "").strip() or None
+        rep_detail = rep.get("detail_url", "").strip() or None
 
-            if lat is None or lng is None:
-                offset_lat = (i % 5) * 0.0015
-                offset_lng = ((i // 5) % 5) * 0.0015
-                lat, lng = default_lat + offset_lat, default_lng + offset_lng
+        coord = _geocode(rep_addr) if rep_addr else None
+        lat, lng = coord if coord else (default_lat, default_lng)
 
-            match_412 = next(
-                (c for c in centers_412 if c.get("district") == district and (c.get("name") in name or name in c.get("name"))),
-                None,
-            )
-            homepage_url = match_412.get("detail_url") if match_412 else OFFICIAL_FACILITY_URL
-
-            operation_status = (row.get("영업상태명") or "").strip() or None
-            items.append(
-                _build_facility_item(
-                    identity=identity,
-                    name=name,
-                    district=district,
-                    facility_type=(row.get("복지시설종류명") or "아동복지시설").strip(),
-                    address=address,
-                    homepage_url=homepage_url,
-                    established_date=(row.get("인허가일자") or "").strip() or None,
-                    operation_status=operation_status,
-                    lat=lat,
-                    lng=lng,
-                    matched_official_center=bool(match_412),
-                )
-            )
-        return schema.FacilityListResponse(
-            items=_rank_trusted_facilities(items),
-            total=len(items),
-            geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
-            source="csv",
-            notice="서울특별시 아동복지시설 정보 CSV 기준입니다.",
+        rep_item = _build_facility_item(
+            identity=f"{district}|{rep_name}|{rep_addr}",
+            name=rep_name,
+            district=district,
+            facility_type="지역아동센터",
+            address=rep_addr,
+            phone=rep_tel,
+            homepage_url=rep_hp or rep_detail or OFFICIAL_FACILITY_URL,
+            operation_status="운영중",
+            lat=lat,
+            lng=lng,
+            matched_official_center=True,
         )
+        items.append(rep_item)
+        seen_names.add(rep_name)
 
-    # 3. Fallback to parsed JSON centers (e.g. for districts like 송파구 that are not in CSV)
-    parsed_centers = _load_parsed_centers().get(district, [])
-    if parsed_centers:
-        items = []
-        for i, c in enumerate(parsed_centers[:limit]):
-            name = c.get("name", "").strip()
-            address = c.get("addr", "").strip()
-            kind = c.get("kind", "지역아동센터").strip()
-            tel = c.get("tel", "").strip() or None
-            identity = f"{district}|{name}|{address}"
+    c412_district = [c for c in centers_412 if c.get("district") == district]
+    for i, c in enumerate(c412_district):
+        c_name = c.get("name", "").strip()
+        if c_name in seen_names or any(seen in c_name or c_name in seen for seen in seen_names):
+            continue
 
-            coordinate = _geocode(address) if address else None
-            if coordinate:
-                lat, lng = coordinate
-            else:
-                offset_lat = (i % 5) * 0.0015
-                offset_lng = ((i // 5) % 5) * 0.0015
-                lat, lng = default_lat + offset_lat, default_lng + offset_lng
+        detail_url = c.get("detail_url", "").strip() or None
+        tel = c.get("tel", "").strip() or None
+
+        matched_parsed = next(
+            (p for p in parsed_centers if p.get("name") in c_name or c_name in p.get("name")),
+            None,
+        )
+        address = matched_parsed.get("addr", "").strip() if matched_parsed else ""
+        kind = matched_parsed.get("kind", "지역아동센터").strip() if matched_parsed else "지역아동센터"
+        if not tel and matched_parsed and matched_parsed.get("tel"):
+            tel = matched_parsed["tel"].strip() or None
+
+        coord = _geocode(address) if address else None
+        if coord:
+            lat, lng = coord
+        else:
+            offset_lat = ((i + 1) % 5) * 0.0015
+            offset_lng = (((i + 1) // 5) % 5) * 0.0015
+            lat, lng = default_lat + offset_lat, default_lng + offset_lng
+
+        items.append(
+            _build_facility_item(
+                identity=f"{district}|{c_name}|{address}",
+                name=c_name,
+                district=district,
+                facility_type=kind,
+                address=address,
+                phone=tel,
+                homepage_url=detail_url or rep_hp or OFFICIAL_FACILITY_URL,
+                operation_status="운영중",
+                lat=lat,
+                lng=lng,
+                matched_official_center=True,
+            )
+        )
+        seen_names.add(c_name)
+        if len(items) >= limit:
+            break
+
+    # 3. 만약 추가 시설이 더 필요할 경우 parsed_centers에서 보충
+    if len(items) < limit:
+        for i, p in enumerate(parsed_centers):
+            p_name = p.get("name", "").strip()
+            if p_name in seen_names or any(seen in p_name or p_name in seen for seen in seen_names):
+                continue
+            address = p.get("addr", "").strip()
+            kind = p.get("kind", "지역아동센터").strip()
+            tel = p.get("tel", "").strip() or None
 
             match_412 = next(
-                (center for center in centers_412 if center.get("district") == district and (center.get("name") in name or name in center.get("name"))),
+                (c for c in centers_412 if c.get("district") == district and (c.get("name") in p_name or p_name in c.get("name"))),
                 None,
             )
-            homepage_url = match_412.get("detail_url") if match_412 else OFFICIAL_FACILITY_URL
+            homepage_url = match_412.get("detail_url") if match_412 else (rep_hp or OFFICIAL_FACILITY_URL)
+
+            coord = _geocode(address) if address else None
+            if coord:
+                lat, lng = coord
+            else:
+                offset_lat = ((len(items) + i) % 5) * 0.0015
+                offset_lng = (((len(items) + i) // 5) % 5) * 0.0015
+                lat, lng = default_lat + offset_lat, default_lng + offset_lng
 
             items.append(
                 _build_facility_item(
-                    identity=identity,
-                    name=name,
+                    identity=f"{district}|{p_name}|{address}",
+                    name=p_name,
                     district=district,
                     facility_type=kind,
                     address=address,
@@ -425,21 +467,41 @@ def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
                     matched_official_center=bool(match_412),
                 )
             )
-        return schema.FacilityListResponse(
-            items=_rank_trusted_facilities(items),
-            total=len(items),
-            geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
-            source="json_412",
-            notice="서울특별시 412개 아동복지 센터 데이터 기준입니다.",
-        )
+            seen_names.add(p_name)
+            if len(items) >= limit:
+                break
+
+    # 랭킹: 대표 센터는 1순위, 그 다음 최우수 센터가 2순위
+    ranked = sorted(
+        items,
+        key=lambda it: (
+            -(it.total_score or 0),
+            it.name,
+            it.address,
+        ),
+    )
+    if rep:
+        rep_id = next((it.id for it in ranked if it.name == rep.get("name")), None)
+        if rep_id:
+            rep_obj = next(it for it in ranked if it.id == rep_id)
+            ranked.remove(rep_obj)
+            ranked.insert(0, rep_obj)
+
+    selected_ids = {item.id for item in ranked[:2]}
+    for idx, it in enumerate(ranked):
+        it.district_rank = idx + 1
+        it.is_representative = it.id in selected_ids
+        it.is_selected = it.id in selected_ids
 
     return schema.FacilityListResponse(
-        items=[],
-        total=0,
-        geocoded_count=0,
-        source="none",
-        notice="해당 자치구의 아동복지시설 정보를 찾을 수 없습니다.",
+        items=ranked,
+        total=len(ranked),
+        geocoded_count=sum(it.lat is not None and it.lng is not None for it in ranked),
+        source="json_412",
+        notice="서울 25개 자치구 대표 아동복지시설 및 우리동네키움포털 412개 센터 데이터 기준입니다.",
     )
+
+
 
 
 # --------------------------------------------------------------------------
