@@ -7,8 +7,10 @@ data/viz_전처리완료.csv(카테고리/세부유형/구/상품상태/상태/�
 15열)를 읽어 price_category_summaries / price_region_stats /
 price_detail_type_stats / price_listing_samples 4개 테이블에 적재한다.
 
-이 파일에는 "동(dong)" 컬럼이 없어 price_dong_stats는 이 스크립트로 채우지 않는다
-(동네 시세지도는 별도 파이프라인 산출물 — crawling_Data/data_/dong_map.html 참고).
+price_dong_stats(동네 시세지도)는 이 파일이 안 다룬다 — viz_전처리완료.csv엔 "동"
+컬럼이 없어서, data/daangn_{구}.csv 원본 3개(지역=동 컬럼 있음)를 따로 읽어 채운다
+(raw_gu_rows/seed_dong_stats 참고). 두 소스가 다른 전처리를 거치므로 집계치가
+카테고리 요약과 완전히 똑같진 않을 수 있다 — 동 단위 시세 "감"을 보여주는 용도.
 
 재학습마다 통째로 다시 뽑는 배치 산출물이라 증분 갱신 대신 테이블별로 전량
 truncate 후 재적재한다(멱등 — 몇 번을 다시 돌려도 결과가 같음).
@@ -23,15 +25,25 @@ from app.core.db import SessionLocal
 from app.models.price_distribution import (
     PriceCategorySummary,
     PriceDetailTypeStat,
+    PriceDongStat,
     PriceListingSample,
     PriceRegionStat,
 )
 
 DEFAULT_SOURCE = Path(__file__).resolve().parents[1] / "data" / "viz_전처리완료.csv"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+# 동 단위 시세지도 전용 — 원본 크롤링 파일 3개(구별). viz_전처리완료.csv와 달리
+# "지역" 컬럼에 동 이름이 그대로 있다.
+RAW_GU_SOURCES = {
+    "영등포구": DATA_DIR / "daangn_영등포구.csv",
+    "송파구": DATA_DIR / "daangn_송파구.csv",
+    "노원구": DATA_DIR / "daangn_노원구.csv",
+}
 
 RECENT_TREND_DAYS = 180  # 최근/이전 median 비교 기준
 MIN_TREND_SAMPLES = 10  # 그룹당 이 미만이면 price_trend_pct는 NULL
 MIN_DETAIL_TYPE_SAMPLES = 10  # (카테고리,세부유형,구) 조합 최소 표본
+MIN_DONG_SAMPLES = 10  # (카테고리,구,동) 조합 최소 표본 — 세부유형과 같은 기준
 MAX_SAMPLES_PER_GU = 600  # 스웜 플롯용 구별 최대 표본수
 OUTLIER_TRIM_PCT = 0.97  # 카테고리 기준 상위 3% 가격 이상치 제외
 
@@ -57,6 +69,36 @@ def _group_by_category(rows: list[dict]) -> dict[str, list[dict]]:
 def _read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8-sig", newline="") as f:
         return list(csv.DictReader(f))
+
+
+def _parse_price(row: dict[str, str]) -> int | None:
+    """원본 크롤링 파일 3개가 서로 다르게 채워져 있다 — 노원구 파일은 "가격원"이
+    전부 빈 문자열이고 대신 "가격"에 "21,000원" 형식으로만 들어있다(실제로 확인함).
+    "가격원"이 유효하면 그대로 쓰고, 아니면 "가격"에서 숫자만 뽑아 쓴다."""
+    raw = (row.get("가격원") or "").strip()
+    if raw.isdigit():
+        return int(raw)
+    fallback = (row.get("가격") or "").strip()
+    digits = "".join(ch for ch in fallback if ch.isdigit())
+    return int(digits) if digits else None
+
+
+def _read_raw_gu_rows() -> list[dict[str, str]]:
+    """동 단위 시세지도용 — data/daangn_{구}.csv 원본 3개를 합쳐서 읽는다.
+    "지역" 컬럼이 그대로 동 이름이고(파일 자체가 구 하나로 스코프됨), 구는
+    RAW_GU_SOURCES 키에서 채워 넣는다(원본 파일엔 구 컬럼이 없음)."""
+    rows: list[dict[str, str]] = []
+    for gu, path in RAW_GU_SOURCES.items():
+        if not path.exists():
+            continue
+        with path.open(encoding="utf-8-sig", newline="") as f:
+            for r in csv.DictReader(f):
+                price = _parse_price(r)
+                dong = (r.get("지역") or "").strip()
+                if price is None or not dong or not r.get("카테고리"):
+                    continue
+                rows.append({"카테고리": r["카테고리"], "구": gu, "동": dong, "가격": price})
+    return rows
 
 
 def _grade(listings_per_month: float) -> str:
@@ -87,6 +129,7 @@ def seed_category_summaries(db, rows: list[dict]) -> int:
         std_price = st.pstdev(prices)
         span_days = max(int(r["등록_경과일"]) for r in crows) or 1
         listings_per_month = len(crows) / (span_days / 30)
+        completed = sum(1 for r in crows if r["상태"] == "거래완료")
         db.add(
             PriceCategorySummary(
                 category=category,
@@ -97,6 +140,7 @@ def seed_category_summaries(db, rows: list[dict]) -> int:
                 price_trend_pct=_trend_pct(crows),
                 frequency_grade=_grade(listings_per_month),
                 listings_per_month=round(listings_per_month, 1),
+                completion_rate=round(completed / len(crows) * 100, 1),
             )
         )
     return len(by_category)
@@ -111,7 +155,11 @@ def seed_region_stats(db, rows: list[dict]) -> int:
 
     for (category, gu), grows in by_group.items():
         prices = [int(r["가격원"]) for r in grows]
+        mean_price = st.mean(prices)
+        std_price = st.pstdev(prices)
         completed = sum(1 for r in grows if r["상태"] == "거래완료")
+        span_days = max(int(r["등록_경과일"]) for r in grows) or 1
+        listings_per_month = len(grows) / (span_days / 30)
         db.add(
             PriceRegionStat(
                 category=category,
@@ -120,6 +168,8 @@ def seed_region_stats(db, rows: list[dict]) -> int:
                 median_price=st.median(prices),
                 completion_rate=round(completed / len(grows) * 100, 1),
                 avg_manner_temp=round(st.mean(float(r["매너온도_수치"]) for r in grows), 1),
+                cv_price=round(std_price / mean_price * 100, 1) if mean_price else 0.0,
+                frequency_grade=_grade(listings_per_month),
             )
         )
     return len(by_group)
@@ -188,6 +238,50 @@ def seed_listing_samples(db, rows: list[dict]) -> int:
     return total
 
 
+def seed_dong_stats(db) -> int:
+    """동네 시세지도 — 카테고리별로 상위 3% 가격 이상치를 뺀 뒤(다른 테이블과 동일
+    기준), 그 카테고리의 중앙값/1·3분위를 구해서 동마다 median_price/dev_pct(카테고리
+    중앙값 대비 편차%)/within_below_above_pct(1~3분위 안/아래/위 비중)를 계산한다."""
+    db.query(PriceDongStat).delete()
+    raw_rows = _read_raw_gu_rows()
+    count = 0
+    for category, crows in _group_by_category(raw_rows).items():
+        prices = sorted(r["가격"] for r in crows)
+        cutoff = prices[int(len(prices) * OUTLIER_TRIM_PCT)]
+        trimmed = [r for r in crows if r["가격"] <= cutoff]
+        if len(trimmed) < 2:
+            continue
+        trimmed_prices = sorted(r["가격"] for r in trimmed)
+        q1, category_median, q3 = st.quantiles(trimmed_prices, n=4)
+
+        by_dong: dict[tuple[str, str], list[int]] = {}
+        for r in trimmed:
+            by_dong.setdefault((r["구"], r["동"]), []).append(r["가격"])
+
+        for (gu, dong), dong_prices in by_dong.items():
+            if len(dong_prices) < MIN_DONG_SAMPLES:
+                continue
+            below = sum(1 for p in dong_prices if p < q1)
+            above = sum(1 for p in dong_prices if p > q3)
+            within = len(dong_prices) - below - above
+            dong_median = st.median(dong_prices)
+            db.add(
+                PriceDongStat(
+                    category=category,
+                    gu=gu,
+                    dong=dong,
+                    sample_count=len(dong_prices),
+                    median_price=dong_median,
+                    within_pct=round(within / len(dong_prices) * 100, 1),
+                    below_pct=round(below / len(dong_prices) * 100, 1),
+                    above_pct=round(above / len(dong_prices) * 100, 1),
+                    dev_pct=round((dong_median - category_median) / category_median * 100, 1) if category_median else 0.0,
+                )
+            )
+            count += 1
+    return count
+
+
 def seed(source: Path) -> None:
     rows = _read_rows(source)
     db = SessionLocal()
@@ -196,6 +290,7 @@ def seed(source: Path) -> None:
         print(f"지역별통계: {seed_region_stats(db, rows)}건")
         print(f"세부유형별통계: {seed_detail_type_stats(db, rows)}건")
         print(f"매물표본: {seed_listing_samples(db, rows)}건")
+        print(f"동네시세: {seed_dong_stats(db)}건")
         db.commit()
     except Exception:
         db.rollback()

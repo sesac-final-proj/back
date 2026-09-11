@@ -31,6 +31,9 @@ class PriceCategorySummary(Base):
     price_trend_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # 최근 180일 중앙값 변화율(%), 표본부족 시 NULL
     frequency_grade: Mapped[str] = mapped_column(String(10), nullable=False)  # S/A/B/C
     listings_per_month: Mapped[float] = mapped_column(Float, nullable=False)
+    # 카테고리 전체 매물 중 상태="거래완료" 비율(%) — PriceRegionStat.completion_rate와
+    # 같은 계산을 구 단위가 아니라 카테고리 전체로 한 것.
+    completion_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -49,6 +52,10 @@ class PriceRegionStat(Base):
     median_price: Mapped[float] = mapped_column(Float, nullable=False)
     completion_rate: Mapped[float] = mapped_column(Float, nullable=False)  # %
     avg_manner_temp: Mapped[float] = mapped_column(Float, nullable=False)
+    # PriceCategorySummary.cv_price/frequency_grade와 같은 계산을 카테고리 전체가
+    # 아니라 (카테고리, 구) 단위로 한 것 — 어드민 "구별 통계" 표에 노출.
+    cv_price: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    frequency_grade: Mapped[str] = mapped_column(String(10), nullable=False, default="C")
 
 
 class PriceDetailTypeStat(Base):

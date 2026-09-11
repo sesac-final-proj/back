@@ -1,4 +1,4 @@
-"""PriceComparisonSampleItem.interest_count 자가 점검.
+"""PriceComparisonSampleItem.interest_count / PriceComparisonCategoryItem.completion_rate 자가 점검.
 
 python -m tests.test_price_comparison_interest 로 실행. 읽기 전용 —
 scripts/seed_price_distribution_data.py로 이미 적재된 스냅샷을 그대로 조회만
@@ -7,7 +7,7 @@ scripts/seed_price_distribution_data.py로 이미 적재된 스냅샷을 그대�
 
 from app.api.v1.admin import service as admin_service
 from app.core.db import SessionLocal
-from app.models.price_distribution import PriceListingSample
+from app.models.price_distribution import PriceCategorySummary, PriceListingSample, PriceRegionStat
 
 
 def main():
@@ -31,7 +31,26 @@ def main():
         assert all(s.gu == row.gu for s in gu_filtered.samples)
         assert any(s.price == row.price and s.interest_count == row.interest_count for s in gu_filtered.samples)
 
-        print("OK: price comparison interest_count self-check passed")
+        # completion_rate — DB 값과 오버뷰 응답이 일치하는지, 범위가 0~100인지만 확인
+        # (실제 계산은 seed 스크립트 책임 — 여기선 스키마 왕복만 검증).
+        overview = admin_service.get_price_comparison_overview(db)
+        assert overview.categories, "카테고리 요약이 비어있으면 안 된다"
+        for item in overview.categories:
+            assert 0 <= item.completion_rate <= 100, f"{item.category} completion_rate 범위 이상: {item.completion_rate}"
+        by_category = {r.category: r for r in db.query(PriceCategorySummary).all()}
+        for item in overview.categories:
+            assert item.completion_rate == by_category[item.category].completion_rate
+
+        # 구별 cv_price/frequency_grade — 응답 필드 존재 + DB와 일치하는지.
+        assert overview.regions, "구별 통계가 비어있으면 안 된다"
+        by_region = {(r.category, r.gu): r for r in db.query(PriceRegionStat).all()}
+        for item in overview.regions:
+            row = by_region[(item.category, item.gu)]
+            assert item.cv_price == row.cv_price
+            assert item.frequency_grade == row.frequency_grade
+            assert item.frequency_grade in ("S", "A", "B", "C")
+
+        print("OK: price comparison interest_count/completion_rate/region-grade self-check passed")
     finally:
         db.close()
 
