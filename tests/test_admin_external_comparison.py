@@ -34,3 +34,19 @@ def test_missing_sources_return_empty_not_fabricated(tmp_path, monkeypatch):
         result = comparison.get_external_comparison(db)
     assert result["items"] == []
     assert all(source["missing"] for source in result["sources"])
+
+
+def test_listing_sentiment_exposes_counts_terms_and_method():
+    result = comparison.summarize_sentiment([
+        {"platform": "당근", "category": "밥솥", "title": "미개봉 정품 밥솥"},
+        {"platform": "당근", "category": "밥솥", "title": "사용감과 흠집 있음"},
+        {"platform": "당근", "category": "밥솥", "title": "쿠쿠 밥솥 판매"},
+        {"platform": "당근", "category": "밥솥", "title": ""},
+    ])
+    platform = result["platforms"][0]
+    assert result["analyzed_count"] == 3
+    assert (platform["positive"], platform["neutral"], platform["negative"]) == (1, 1, 1)
+    assert platform["score"] == 0
+    assert platform["top_positive_terms"][:2] == ["미개봉", "정품"]
+    assert platform["top_negative_terms"][:2] == ["흠집", "사용감"]
+    assert "규칙 기반" in result["method"]

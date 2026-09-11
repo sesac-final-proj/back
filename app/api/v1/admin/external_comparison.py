@@ -36,6 +36,7 @@ def listing_sentiment(title: str) -> tuple[str, list[str], list[str]]:
 
 
 def summarize_sentiment(records: list[dict]) -> dict:
+    records = [record for record in records if record["title"].strip()]
     grouped = defaultdict(lambda: {"total": 0, "positive": 0, "neutral": 0, "negative": 0,
                                   "positive_terms": Counter(), "negative_terms": Counter()})
     for record in records:
