@@ -18,6 +18,7 @@ class ChargeCreateRequest(BaseModel):
 class StoreResponse(BaseModel):
     id: int
     name: str
+    image_url: str | None = None
 
 
 class StoreCreateRequest(BaseModel):

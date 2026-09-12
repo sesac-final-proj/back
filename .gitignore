@@ -19,3 +19,4 @@ app/api/v1/nicknames/resources/forbidden_words.json
 app/api/v1/nicknames/resources/forbidden_words.local.json
 app/api/v1/nicknames/resources/forbidden_words.prod.json
 !app/api/v1/nicknames/resources/forbidden_words.example.json
+data/sushi_mart.jpeg
