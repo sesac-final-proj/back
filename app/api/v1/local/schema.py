@@ -80,7 +80,7 @@ class RegionListResponse(BaseModel):
     items: list[RegionItem]
 
 
-CongestionLevel = Literal["여유", "보통", "약간 붐빔", "붐빔", "정보없음"]
+CongestionLevel = Literal["여유", "보통", "약간 붐빔", "붐빔", "매우 붐빔", "정보없음"]
 
 
 class PlaceRecommendation(BaseModel):
@@ -92,6 +92,8 @@ class PlaceRecommendation(BaseModel):
     distanceMeters: int
     congestionLevel: CongestionLevel
     congestionMessage: str | None = None
+    recommendationScore: int | None = None
+    recommendationReason: str | None = None
 
 
 class PlaceRecommendationResponse(BaseModel):
