@@ -37,11 +37,12 @@ def create_store(db: Session, data: schema.StoreCreateRequest) -> schema.StoreRe
 
 
 def get_store(db: Session, store_id: int) -> schema.StoreResponse:
-    """QR(또는 그 URL)을 스캔한 손님 앱이 결제 화면에 표시할 이름을 조회."""
+    """QR(또는 그 URL)을 스캔한 손님 앱이 결제 화면에 표시할 이름/사진을 조회."""
     store = db.get(Store, store_id)
     if store is None:
         raise NotFoundError("가맹점을 찾을 수 없습니다.")
-    return schema.StoreResponse(id=store.id, name=store.name)
+    image_url = storage.public_url(store.image_object_key) if store.image_object_key else None
+    return schema.StoreResponse(id=store.id, name=store.name, image_url=image_url)
 
 
 # ponytail: QR 결제도 charge_wallet과 같은 이유로 mock — 가맹점은 User가 아니라 잔액을

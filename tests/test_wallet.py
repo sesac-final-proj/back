@@ -9,6 +9,7 @@ from app.api.v1.trades import service as trade_service
 from app.api.v1.trades.schema import ProductCreateRequest
 from app.api.v1.wallet import service as wallet_service
 from app.api.v1.wallet.schema import PaymentCreateRequest
+from app.core import storage
 from app.core.db import SessionLocal
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
 from app.core.security import hash_password
@@ -70,6 +71,15 @@ def main():
         db.commit()
         db.refresh(store)
         store_id = store.id
+
+        # 매장 사진 없으면 image_url None, 있으면 storage.public_url로 채워짐
+        fetched = wallet_service.get_store(db, store.id)
+        assert fetched.image_url is None
+        store.image_object_key = "stores/__selfcheck__.jpg"
+        db.commit()
+        assert wallet_service.get_store(db, store.id).image_url == storage.public_url("stores/__selfcheck__.jpg")
+        store.image_object_key = None
+        db.commit()
 
         paid = wallet_service.pay_by_qr(db, buyer, QrPayRequest(store_id=store.id, amount=5000))
         assert paid.balance == 115000

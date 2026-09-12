@@ -18,6 +18,8 @@ class Store(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # 결제 화면 상단에 보여줄 매장 사진 — 선택사항(mock 매장은 없어도 됨).
+    image_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
