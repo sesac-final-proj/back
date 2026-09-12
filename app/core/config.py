@@ -11,14 +11,17 @@ def _env_file() -> str:
         return explicit
 
     app_env = os.getenv("APP_ENV", "local")
-    candidate = Path(f".env.{app_env}")
-    if candidate.exists():
-        return str(candidate)
-    if Path(".env").exists():
-        return ".env"
-    test_env = Path("tests/.env")
-    if app_env == "test" and test_env.exists():
-        return str(test_env)
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    candidates = [
+        base_dir / f".env.{app_env}",
+        base_dir / ".env",
+        Path(f".env.{app_env}"),
+        Path(".env"),
+        base_dir / "tests" / ".env",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
     return ".env"
 
 
@@ -83,9 +86,12 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         if not self.DB_USER or not self.DB_PASSWORD:
             return "sqlite:///./local_dev.db"
+        port = self.DB_PORT or "5432"
+        if port == "6543":
+            port = "5432"
         return (
             f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}"
-            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+            f"@{self.DB_HOST}:{port}/{self.DB_NAME}"
         )
 
     @property

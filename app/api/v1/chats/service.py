@@ -133,6 +133,9 @@ def _to_response(
         else None,
         product_price=product.desired_price if product else None,
         product_trade_status=product.trade_status if product else None,
+        product_trade_place=product.trade_place if product else None,
+        product_trade_place_lat=product.trade_place_lat if product else None,
+        product_trade_place_lng=product.trade_place_lng if product else None,
     )
 
 

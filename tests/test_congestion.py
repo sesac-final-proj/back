@@ -19,7 +19,7 @@ BOUNDS = dict(sw_lat=37.49, sw_lng=126.99, ne_lat=37.51, ne_lng=127.01)
 class CongestionTest(unittest.TestCase):
     def setUp(self):
         for target, value in [('load_hotspots', None), ('settings', SimpleNamespace(
-            SEOUL_CITYDATA_SERVICE='test', SEOUL_OPEN_API_KEY='', SEOUL_OPEN_DATA_API_KEY=''))]:
+            SEOUL_CITYDATA_API_KEY='', SEOUL_CITYDATA_SERVICE='test', SEOUL_OPEN_API_KEY='', SEOUL_OPEN_DATA_API_KEY=''))]:
             mock = patch.object(service, target, return_value=SPOTS) if value is None else patch.object(service, target, value)
             mock.start()
             self.addCleanup(mock.stop)
@@ -37,6 +37,12 @@ class CongestionTest(unittest.TestCase):
         self.assertNotIn('baselineScore', zone)
         self.assertIn('/api/v1/local/transit', app.openapi()['paths'])
         self.assertIn('/api/v1/local/congestion-zones', app.openapi()['paths'])
+
+    def test_canonical_citydata_key_takes_precedence(self):
+        with patch.object(service, 'settings', SimpleNamespace(
+            SEOUL_CITYDATA_API_KEY='canonical', SEOUL_CITYDATA_SERVICE='legacy',
+            SEOUL_OPEN_API_KEY='', SEOUL_OPEN_DATA_API_KEY='')):
+            self.assertEqual(service.get_citydata_api_key(), 'canonical')
 
     def test_outside_viewport_does_not_fetch_or_invent_readings(self):
         with patch.object(service, 'fetch_citydata_ppltn_raw') as fetch:

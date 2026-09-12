@@ -53,5 +53,10 @@ def list_regions(db: Session = Depends(get_db)):
 
 
 @router.get("/recommend-place", response_model=schema.PlaceRecommendationResponse)
-def recommend_place(query: str = Query(..., min_length=1, max_length=100)):
-    return service.recommend_place(query)
+def recommend_place(
+    query: str | None = Query(default=None, min_length=1, max_length=100),
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lng: float | None = Query(default=None, ge=-180, le=180),
+    hour: int | None = Query(default=None, ge=0, le=23),
+):
+    return service.recommend_place(query=query, lat=lat, lng=lng, hour=hour)
