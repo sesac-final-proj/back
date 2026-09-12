@@ -36,6 +36,18 @@ class GuStatusDataCount(BaseModel):
     transaction_count: int
 
 
+class GuCategoryDataCount(BaseModel):
+    gu_name: str
+    category: str
+    transaction_count: int
+
+
+class RegionCategoryDataCount(BaseModel):
+    region_name: str  # "구 동" — RegionDataCount.region_name과 같은 포맷
+    category: str
+    transaction_count: int
+
+
 class DailyTransactionCount(BaseModel):
     date: date
     transaction_count: int
@@ -75,6 +87,8 @@ class DataStatusResponse(BaseModel):
     price_band_counts: list[PriceBandCount] = Field(default_factory=list)
     region_counts: list[RegionDataCount]
     category_counts: list[CategoryDataCount]
+    category_counts_by_gu: list[GuCategoryDataCount] = Field(default_factory=list)
+    category_counts_by_region: list[RegionCategoryDataCount] = Field(default_factory=list)
     recent_transactions: list[RecentTransactionItem] = Field(default_factory=list)
     recent_errors: list[CollectionErrorItem] = Field(default_factory=list)
 
@@ -423,6 +437,7 @@ class PriceComparisonCategoryItem(BaseModel):
     price_trend_pct: float | None
     frequency_grade: str
     listings_per_month: float
+    completion_rate: float
 
 
 class PriceComparisonRegionItem(BaseModel):
@@ -434,6 +449,8 @@ class PriceComparisonRegionItem(BaseModel):
     median_price: float
     completion_rate: float
     avg_manner_temp: float
+    cv_price: float
+    frequency_grade: str
 
 
 class PriceComparisonDetailTypeItem(BaseModel):
@@ -458,11 +475,30 @@ class PriceComparisonSampleItem(BaseModel):
 
     gu: str
     price: int
+    interest_count: int
 
 
 class PriceComparisonSamplesResponse(BaseModel):
     category: str
     samples: list[PriceComparisonSampleItem]
+
+
+class PriceDongStatItem(BaseModel):
+    model_config = {"from_attributes": True}
+
+    gu: str
+    dong: str
+    sample_count: int
+    median_price: float
+    within_pct: float
+    below_pct: float
+    above_pct: float
+    dev_pct: float
+
+
+class PriceDongMapResponse(BaseModel):
+    category: str
+    dongs: list[PriceDongStatItem]
 
 
 class NoticeListItem(BaseModel):

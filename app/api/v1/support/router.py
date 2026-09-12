@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.support import schema, service
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_admin
 from app.models.user import User
+from app.models.support import SupportInquiryStatus
 
 router = APIRouter(prefix="/api/v1/support", tags=["고객센터"])
 
@@ -34,6 +35,24 @@ def answer_inquiry(body: schema.InquiryAnswerRequest, inquiry_id: int, admin: Us
     return service.answer_inquiry(db, admin, inquiry_id, body)
 
 
+@router.get("/admin/inquiry-page", response_model=schema.InquiryPage)
+def inquiry_page(page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=100),
+                 status: SupportInquiryStatus | None = None, search: str = Query("", max_length=120),
+                 admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return service.list_inquiry_page(db, page, page_size, status, search)
+
+
+@router.get("/admin/inquiries/{inquiry_id}", response_model=schema.InquiryResponse)
+def inquiry_detail(inquiry_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return service.get_admin_inquiry(db, inquiry_id)
+
+
 @router.post("/admin/inquiries/{inquiry_id}/close", response_model=schema.InquiryResponse)
 def close_inquiry(inquiry_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     return service.close_inquiry(db, admin, inquiry_id)
+
+
+@router.delete("/admin/inquiries/{inquiry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_inquiry(inquiry_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    service.delete_closed_inquiry(db, inquiry_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

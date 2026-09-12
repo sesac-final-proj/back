@@ -21,6 +21,7 @@ from app.models.price_model import (
 from app.models.price_distribution import (
     PriceCategorySummary,
     PriceDetailTypeStat,
+    PriceDongStat,
     PriceListingSample,
     PriceRegionStat,
 )
@@ -356,6 +357,32 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         .limit(8)
     ).all()
 
+    # SeoulGuMap 구 탭 옆 "카테고리 구성" 패널이 탭에 맞춰 바뀌도록 — 전체 category_counts와
+    # 별개로 구별로도 집계해둔다. 표본이 작아(구 3개 × 카테고리 6개 이하) limit 없이 다 내려도 됨.
+    category_by_gu_rows = db.execute(
+        select(
+            Region.gu_name,
+            Transaction.category,
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.gu_name, Transaction.category)
+        .order_by(Region.gu_name, func.count(Transaction.id).desc())
+    ).all()
+
+    # 동 단위 선택(SeoulGuMap에서 동 클릭)에도 카테고리 구성이 따라 바뀌도록 — region_counts와
+    # 같은 "구 동" 포맷 키를 쓴다. 매칭된 지역이 83개뿐이라 이것도 limit 없이 다 내림.
+    category_by_region_rows = db.execute(
+        select(
+            (Region.gu_name + " " + Region.dong_name).label("region_name"),
+            Transaction.category,
+            func.count(Transaction.id).label("transaction_count"),
+        )
+        .join(Transaction, Transaction.region_id == Region.id)
+        .group_by(Region.id, Region.gu_name, Region.dong_name, Transaction.category)
+        .order_by(Region.gu_name, Region.dong_name, func.count(Transaction.id).desc())
+    ).all()
+
     return schema.DataStatusResponse(
         total_transactions=total_transactions,
         priced_transactions=priced_transactions,
@@ -391,6 +418,14 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
                 average_price=round(float(category_average)) if category_average is not None else None,
             )
             for category, count, priced_count, completed_count, category_average in category_rows
+        ],
+        category_counts_by_gu=[
+            schema.GuCategoryDataCount(gu_name=gu_name, category=category, transaction_count=count)
+            for gu_name, category, count in category_by_gu_rows
+        ],
+        category_counts_by_region=[
+            schema.RegionCategoryDataCount(region_name=region_name, category=category, transaction_count=count)
+            for region_name, category, count in category_by_region_rows
         ],
         recent_transactions=[
             schema.RecentTransactionItem(
@@ -489,11 +524,11 @@ def get_dream_status() -> schema.DreamStatusResponse:
         facilityTypes=[schema.DreamFacilityTypeSummary(facilityType=name, count=count) for name, count in type_counts.most_common(10)],
         sourceFiles=sources,
         donationDataConnected=False,
-        donationMetricStatus="기부 설정·내역·집행 저장 API 미구현",
+        donationMetricStatus="구별 포인트는 포인트 원장 API로 조회 · 실제 기부 집행액은 별도 원장 필요",
         limitations=[
             "현재 시설 데이터는 운영 대상 탐색용이며 기부 실적 데이터가 아닙니다.",
             "시설 유형 구성은 세부 유형이 있는 CSV·파싱 JSON 범위이며 412개 전체의 유형 분포가 아닙니다.",
-            "프론트의 donationCount, currentAmount, targetAmount는 현재 0 기본값입니다.",
+            "구별 포인트 적립·차감·잔액은 사용자 현재 대표 동네 기준으로 포인트 원장에서 집계합니다.",
             "기부 성과 분석은 거래-기부 원장과 집행 원장이 연결된 뒤 활성화해야 합니다.",
         ],
     )
@@ -679,4 +714,19 @@ def get_price_comparison_samples(
     return schema.PriceComparisonSamplesResponse(
         category=category,
         samples=[schema.PriceComparisonSampleItem.model_validate(r) for r in rows],
+    )
+
+
+def get_price_dong_map(db: Session, category: str) -> schema.PriceDongMapResponse:
+    """동네 시세지도 — 카테고리 하나의 동별 시세 스냅샷(seed_dong_stats 산출물
+    그대로 반환, 표본 10건 미만 동은 seed 단계에서 이미 제외됨)."""
+    rows = (
+        db.query(PriceDongStat)
+        .filter(PriceDongStat.category == category)
+        .order_by(PriceDongStat.gu, PriceDongStat.dong)
+        .all()
+    )
+    return schema.PriceDongMapResponse(
+        category=category,
+        dongs=[schema.PriceDongStatItem.model_validate(r) for r in rows],
     )

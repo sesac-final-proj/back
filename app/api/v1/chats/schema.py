@@ -99,4 +99,9 @@ class MessageResponse(BaseModel):
     created_at: datetime
 
 
-MessageListResponse = Page[MessageResponse]
+class MessageListResponse(BaseModel):
+    items: list[MessageResponse]
+    total: int
+    # 상대방이 메시지함을 마지막으로 연 시각 — 프론트가 "내가 보낸 메시지 중 이 시각
+    # 이후 것"만 안읽음(1)으로 표시한다. 상대가 한 번도 연 적 없으면 None(전부 안읽음).
+    counterpart_last_read_at: datetime | None = None

@@ -31,6 +31,9 @@ class PriceCategorySummary(Base):
     price_trend_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # 최근 180일 중앙값 변화율(%), 표본부족 시 NULL
     frequency_grade: Mapped[str] = mapped_column(String(10), nullable=False)  # S/A/B/C
     listings_per_month: Mapped[float] = mapped_column(Float, nullable=False)
+    # 카테고리 전체 매물 중 상태="거래완료" 비율(%) — PriceRegionStat.completion_rate와
+    # 같은 계산을 구 단위가 아니라 카테고리 전체로 한 것.
+    completion_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -49,6 +52,10 @@ class PriceRegionStat(Base):
     median_price: Mapped[float] = mapped_column(Float, nullable=False)
     completion_rate: Mapped[float] = mapped_column(Float, nullable=False)  # %
     avg_manner_temp: Mapped[float] = mapped_column(Float, nullable=False)
+    # PriceCategorySummary.cv_price/frequency_grade와 같은 계산을 카테고리 전체가
+    # 아니라 (카테고리, 구) 단위로 한 것 — 어드민 "구별 통계" 표에 노출.
+    cv_price: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    frequency_grade: Mapped[str] = mapped_column(String(10), nullable=False, default="C")
 
 
 class PriceDetailTypeStat(Base):
@@ -71,10 +78,9 @@ class PriceDetailTypeStat(Base):
 
 
 class PriceListingSample(Base):
-    """카테고리 x 구 하나에서 뽑은 개별 매물 가격 표본(구별 최대 600건) — 스웜 플롯
-    렌더링용(price_model.py의 PriceModelListing 기반 스웜 플롯과 같은 패턴). 집계치
-    (PriceRegionStat)만으로는 점 하나하나를 못 그려서 별도로 원본 단위 표본을 둔다.
-    상위 3% 가격 이상치는 시각화 왜곡 방지를 위해 표본 추출 전에 제외."""
+    """카테고리 x 구 하나에서 뽑은 개별 매물 가격/관심수 표본(구별 최대 600건) — 가격x관심수
+    산점도 렌더링용. 집계치(PriceRegionStat)만으로는 점 하나하나를 못 그려서 별도로
+    원본 단위 표본을 둔다. 상위 3% 가격 이상치는 시각화 왜곡 방지를 위해 표본 추출 전에 제외."""
 
     __tablename__ = "price_listing_samples"
 
@@ -82,6 +88,8 @@ class PriceListingSample(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     gu: Mapped[str] = mapped_column(String(30), nullable=False)
     price: Mapped[int] = mapped_column(Integer, nullable=False)
+    # CSV 원본(관심수 컬럼)에 이미 있던 값 — 산점도 y축(가격x관심수)용으로 같이 적재.
+    interest_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class PriceDongStat(Base):

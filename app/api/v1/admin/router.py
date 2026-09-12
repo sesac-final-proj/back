@@ -39,6 +39,18 @@ def dream_status():
     return service.get_dream_status()
 
 
+@router.get("/point-summary")
+def point_summary(db: Session = Depends(get_db)):
+    from app.api.v1.admin.point_summary import get_point_summary
+    return get_point_summary(db)
+
+
+@router.get("/external-comparison")
+def external_comparison(db: Session = Depends(get_db)):
+    from app.api.v1.admin.external_comparison import get_external_comparison
+    return get_external_comparison(db)
+
+
 # --------------------------------------------------------------------------
 # 가격예측 모델 대시보드 (docs/issue/12-price-prediction-dashboard.md)
 # --------------------------------------------------------------------------
@@ -105,6 +117,11 @@ def price_comparison_samples(
     db: Session = Depends(get_db),
 ):
     return service.get_price_comparison_samples(db, category, gu, sample)
+
+
+@router.get("/price-comparison/dong-map", response_model=schema.PriceDongMapResponse)
+def price_comparison_dong_map(category: str, db: Session = Depends(get_db)):
+    return service.get_price_dong_map(db, category)
 
 
 @router.get("/notices", response_model=schema.NoticeListResponse)

@@ -44,3 +44,19 @@ class InquiryResponse(BaseModel):
 class InquiryListResponse(BaseModel):
     items: list[InquiryResponse]
     total: int
+
+
+class InquirySummary(BaseModel):
+    id: int
+    title: str
+    status: str
+    created_at: datetime
+    user_nickname: str | None = None
+    user_email: str | None = None
+
+
+class InquiryPage(BaseModel):
+    items: list[InquirySummary]
+    total: int
+    page: int
+    page_size: int
