@@ -515,9 +515,14 @@ TRADE_POINT_MIN_AMOUNT = 5000  # 중고거래는 5,000원 이상만 적립 대�
 
 
 def award_points(
-    db: Session, user_id: int, amount: int, source: str, related_id: int | None = None
+    db: Session, user_id: int, amount: int, source: str, related_id: int | None = None, region_id: int | None = None
 ) -> int:
     """결제 금액에서 꿈방울을 적립하고 적립액을 반환한다(0이면 기록도 안 남김).
+
+    region_id는 적립 "당시" 동네 스냅샷 — 반드시 호출부가 넘겨야 한다(트레이드는
+    상품의 region_id, QR 일반결제는 결제 시점 사용자의 region_id). User.region_id를
+    나중에 join으로 끌어오면 사용자가 활동동네를 바꾸는 순간 이미 지난 적립까지
+    전부 새 동네 소속으로 바뀌어버리는 버그가 생긴다 — 여기서 확정해서 저장한다.
 
     호출부(wallet/service.py)가 이미 같은 트랜잭션 안에서 커밋하므로 여기선
     db.add만 하고 커밋은 하지 않는다 — 결제와 적립이 항상 함께 성공/실패한다.
@@ -532,7 +537,11 @@ def award_points(
     if points <= 0:
         return 0
 
-    db.add(PointTransaction(user_id=user_id, amount=points, source=source, related_id=related_id))
+    db.add(
+        PointTransaction(
+            user_id=user_id, amount=points, source=source, related_id=related_id, region_id=region_id
+        )
+    )
     return points
 
 
