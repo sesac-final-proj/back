@@ -88,9 +88,14 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         if not self.DB_USER or not self.DB_PASSWORD:
             return "sqlite:///./local_dev.db"
+        # ponytail: 한때 6543(pgbouncer 트랜잭션 풀러) 대신 5432(세션 풀러)를 강제하는
+        # 코드가 있었는데, 이게 오히려 문제였다 — Supabase 세션모드는 전체 프로젝트에
+        # session-mode 접속을 최대 15개까지만 허용해서, 로컬 개발 서버 몇 개 + 운영
+        # 서버만 동시에 붙어도 금방 EMAXCONNSESSION으로 꽉 찬다(카카오 로그인이 DB
+        # 커넥션을 못 얻어 500 나던 사고 원인). 트랜잭션 풀러(6543)는 훨씬 큰 풀을
+        # 여러 클라이언트가 공유하는 방식이라 이 프로젝트 사용 패턴(단순 CRUD, 세션 내
+        # 여러 스텝짜리 advisory lock 등 없음)엔 문제없이 검증됨 — DB_PORT를 그대로 쓴다.
         port = self.DB_PORT or "5432"
-        if port == "6543":
-            port = "5432"
         return (
             f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{port}/{self.DB_NAME}"
