@@ -46,6 +46,8 @@ def main():
             Transaction(product_title="검증동 청소기 2", category="청소기", region_id=region.id, status="거래중", listed_at=date.today()),
             Transaction(product_title="매칭실패 청소기", category="청소기", region_id=None, status="거래중", listed_at=date.today()),
             Transaction(product_title="매칭실패 의류", category="의류", region_id=None, status="거래중", listed_at=date.today()),
+            # 크롤러가 제목 끝에 붙인 위치 태그 — "최근 수집 데이터" 패널에서 지워져 나와야 한다.
+            Transaction(product_title="풀리오 목 마사지기 남양주", category="마사지기", region_id=region.id, status="거래완료", listed_at=date.today()),
         ]
         db.add_all(rows)
         db.commit()
@@ -62,6 +64,11 @@ def main():
         assert status_resp.region_count >= 1
         assert len(status_resp.category_counts) > 0
         assert len(status_resp.region_counts) > 0
+
+        # 최근 수집 데이터 — 크롤러가 붙인 위치 태그("... 남양주")가 지워져서 나와야 한다.
+        leaked = [t for t in status_resp.recent_transactions if t.product_title.startswith("풀리오 목 마사지기")]
+        assert len(leaked) == 1
+        assert leaked[0].product_title == "풀리오 목 마사지기"
 
         # require_admin 게이트 — 일반 유저는 403, 관리자는 200.
         try:

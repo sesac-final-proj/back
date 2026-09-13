@@ -50,6 +50,9 @@ class ChatRoomResponse(BaseModel):
     product_thumbnail_url: str | None = None
     product_price: int | None = None
     product_trade_status: ChatTradeStatus | None = None
+    product_trade_place: str | None = None
+    product_trade_place_lat: float | None = None
+    product_trade_place_lng: float | None = None
 
 
 ChatRoomListResponse = Page[ChatRoomResponse]

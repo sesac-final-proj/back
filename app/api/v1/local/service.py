@@ -23,6 +23,7 @@ KAKAO_KEYWORD_SEARCH_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
 SEOUL_CITYDATA_BASE = "http://openapi.seoul.go.kr:8088"
 RECOMMEND_RADIUS_METERS = 2000
 RECOMMEND_MAX_RESULTS = 5
+_CONGESTION_PENALTY = {"여유": 0, "보통": 18, "약간 붐빔": 42, "붐빔": 70, "매우 붐빔": 78}
 
 # 서울시 실시간 도시데이터 공식 명소 121곳 (프론트 GajiMap.tsx와 동일 목록).
 SPOTS: list[dict[str, object]] = [
@@ -149,11 +150,28 @@ SPOTS: list[dict[str, object]] = [
     {"name": "홍제폭포", "lat": 37.584212, "lng": 126.936212},
 ]
 
-_CONGEST_RANK = {"붐빔": 4, "약간 붐빔": 3, "보통": 2}
+_CONGEST_RANK = {"매우 붐빔": 5, "붐빔": 4, "약간 붐빔": 3, "보통": 2}
 
 
 def _congest_rank(level: str) -> int:
     return _CONGEST_RANK.get(level, 1)  # 여유/쾌적/정보없음은 전부 최하위 취급
+
+
+def _recommendation_score(distance: float, congestion_level: str, hour: int | None) -> int:
+    distance_penalty = min(38, round(distance / 55))
+    congestion_penalty = _CONGESTION_PENALTY.get(congestion_level, 85)
+    evening_penalty = 6 if hour is not None and 18 <= hour <= 21 and congestion_level in {"약간 붐빔", "붐빔", "매우 붐빔"} else 0
+    return max(0, min(100, 100 - distance_penalty - congestion_penalty - evening_penalty))
+
+
+def _recommendation_reason(distance: float, congestion_level: str) -> str:
+    if congestion_level == "여유":
+        return f"도보 {round(distance)}m, 현재 여유로워 거래 대기 부담이 낮아요."
+    if congestion_level == "보통":
+        return f"도보 {round(distance)}m, 사람이 적당해 서로 찾기 쉬워요."
+    if congestion_level == "약간 붐빔":
+        return f"도보 {round(distance)}m, 약간 붐비지만 공공장소라 식별이 쉬워요."
+    return f"도보 {round(distance)}m, 붐비는 편이라 짧은 거래에만 권장해요."
 
 
 def _distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -303,11 +321,19 @@ def list_danger_signals(
     return schema.DangerSignalListResponse(items=items, total=len(items))
 
 
-def recommend_place(query: str) -> schema.PlaceRecommendationResponse:
-    coords = _geocode_query(query)
-    if coords is None:
-        return schema.PlaceRecommendationResponse(results=[])
-    lat, lng = coords
+def recommend_place(
+    query: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    hour: int | None = None,
+) -> schema.PlaceRecommendationResponse:
+    if lat is None or lng is None:
+        if not query:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query 또는 lat/lng가 필요합니다.")
+        coords = _geocode_query(query)
+        if coords is None:
+            return schema.PlaceRecommendationResponse(results=[])
+        lat, lng = coords
 
     candidates = []
     for spot in SPOTS:
@@ -332,10 +358,12 @@ def recommend_place(query: str) -> schema.PlaceRecommendationResponse:
             distanceMeters=round(distance),
             congestionLevel=level,
             congestionMessage=message,
+            recommendationScore=_recommendation_score(distance, level, hour),
+            recommendationReason=_recommendation_reason(distance, level),
         )
         for (distance, spot), (level, message) in zip(candidates, congestions)
         if level != "정보없음"  # 혼잡도 조회 실패 — 추천 의미가 없어 제외
     ]
-    # 혼잡도 높은 순 우선, 같은 등급이면 가까운 곳 우선.
-    results.sort(key=lambda item: (-_congest_rank(item.congestionLevel), item.distanceMeters))
+    # 거래 장소는 덜 붐비고 가까운 곳 우선. 동률이면 과도한 혼잡 후보를 뒤로 보낸다.
+    results.sort(key=lambda item: (-(item.recommendationScore or 0), _congest_rank(item.congestionLevel), item.distanceMeters))
     return schema.PlaceRecommendationResponse(results=results[:RECOMMEND_MAX_RESULTS])

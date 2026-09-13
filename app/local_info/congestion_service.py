@@ -38,7 +38,7 @@ def load_hotspots() -> List[Dict[str, Any]]:
 
 
 def get_citydata_api_key() -> str:
-    key = settings.SEOUL_CITYDATA_SERVICE or settings.SEOUL_OPEN_API_KEY or settings.SEOUL_OPEN_DATA_API_KEY
+    key = settings.SEOUL_CITYDATA_API_KEY or settings.SEOUL_CITYDATA_SERVICE or settings.SEOUL_OPEN_API_KEY or settings.SEOUL_OPEN_DATA_API_KEY
     return key.strip() if key else ""
 
 
