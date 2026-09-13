@@ -505,9 +505,24 @@ PRICE_HINT_MIN_TITLE_LEN = 2  # 1글자만 쳤을 때 너무 광범위하게 매
 PRICE_HINT_MIN_SAMPLE = 3  # 표본 3개 미만이면 산정 안 함(_frequency_grade "산정불가"와 동일 기준)
 PRICE_HINT_RANGE_RATIO = 0.2  # 중위값 대비 ±20%
 
-# ponytail: 시연용 하드코딩 — "다이슨 V10"으로 데모할 때 실제 크롤링 데이터
-# 중위값(변동 가능) 대신 항상 30만원 기준 범위가 뜨게 고정. 데모 끝나면 삭제.
-PRICE_HINT_DEMO_OVERRIDES = {"다이슨 v10": 300000}
+# ponytail: 시연용 하드코딩 — "다이슨 V10" 데모에서 실제 크롤링 데이터 중위값
+# (변동 가능) 대신 상태 등급(A/B/C 라벨)별로 항상 같은 값이 뜨게 고정.
+# 제목에 등급 키워드가 없으면 A라벨(정상)로 취급. 데모 끝나면 삭제.
+PRICE_HINT_DEMO_MODEL_KEYWORD = "다이슨 v10"
+PRICE_HINT_DEMO_GRADE_MEDIANS = [
+    ("고장", 130000),  # C라벨
+    ("중고", 160000),  # B라벨
+]
+PRICE_HINT_DEMO_DEFAULT_MEDIAN = 300000  # A라벨(정상)
+
+
+def _demo_price_override_median(title_lower: str) -> int | None:
+    if PRICE_HINT_DEMO_MODEL_KEYWORD not in title_lower:
+        return None
+    for keyword, median in PRICE_HINT_DEMO_GRADE_MEDIANS:
+        if keyword in title_lower:
+            return median
+    return PRICE_HINT_DEMO_DEFAULT_MEDIAN
 
 
 def get_price_hint(db: Session, title: str, category: str | None) -> schema.PriceHintResponse:
@@ -528,15 +543,15 @@ def get_price_hint(db: Session, title: str, category: str | None) -> schema.Pric
     if len(title) < PRICE_HINT_MIN_TITLE_LEN:
         return schema.PriceHintResponse(status="insufficient_data", sample_count=0)
 
-    for keyword, demo_median in PRICE_HINT_DEMO_OVERRIDES.items():
-        if keyword in title.lower():
-            return schema.PriceHintResponse(
-                status="ok",
-                median_price=demo_median,
-                price_min=round(demo_median * (1 - PRICE_HINT_RANGE_RATIO)),
-                price_max=round(demo_median * (1 + PRICE_HINT_RANGE_RATIO)),
-                sample_count=PRICE_HINT_MIN_SAMPLE,
-            )
+    demo_median = _demo_price_override_median(title.lower())
+    if demo_median is not None:
+        return schema.PriceHintResponse(
+            status="ok",
+            median_price=demo_median,
+            price_min=round(demo_median * (1 - PRICE_HINT_RANGE_RATIO)),
+            price_max=round(demo_median * (1 + PRICE_HINT_RANGE_RATIO)),
+            sample_count=PRICE_HINT_MIN_SAMPLE,
+        )
 
     base_query = db.query(Transaction.price).filter(Transaction.product_title.ilike(f"%{title}%"))
     prices: list[int] = []
