@@ -73,6 +73,13 @@ def test_price_hint():
         too_short = trade_service.get_price_hint(db, "다", None)
         assert too_short.status == "insufficient_data"  # 제목 1글자는 조회 자체를 안 함
 
+        # 글쓰기 화면의 category("중고거래" 등 게시판 대분류)는 크롤링 데이터의
+        # category("디지털/가전" 등 실제 품목분류)와 어휘가 달라 그대로 필터링하면
+        # 항상 0건 — title만으로 폴백돼서 정상 매칭돼야 한다(실사고 재현 케이스).
+        mismatched_category = trade_service.get_price_hint(db, f"다이슨 {v8_kw}", "중고거래")
+        assert mismatched_category.status == "ok" and mismatched_category.sample_count == 3
+        assert mismatched_category.median_price == 60000
+
         print("price-hint self-check OK")
     finally:
         db.query(Transaction).filter(Transaction.region_id == region.id).delete(synchronize_session=False)

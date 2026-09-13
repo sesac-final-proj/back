@@ -513,15 +513,23 @@ def get_price_hint(db: Session, title: str, category: str | None) -> schema.Pric
     제목 부분일치(ILIKE)로 좁힌다 — 같은 물건군이라도 모델 태그가 제목에 그대로
     들어있는 크롤링 데이터 특성을 그대로 활용(임베딩/모델분류는 과설계, 필요해지면
     후순위 도입).
+
+    category는 호출부(글쓰기 화면)의 Product.category("중고거래"/"중고차"/"알바"/
+    "기타 서비스" — 게시판 대분류)와 크롤링 데이터의 Transaction.category("청소기",
+    "마사지기" 등 실제 품목분류)가 서로 다른 어휘라 그대로 필터링하면 항상 0건이
+    나온다. category로 걸렀는데 표본이 부족하면 title만으로 다시 조회 — 제목
+    매칭이 이미 충분히 구체적이라 category 없이도 정확도는 유지된다.
     """
     title = title.strip()
     if len(title) < PRICE_HINT_MIN_TITLE_LEN:
         return schema.PriceHintResponse(status="insufficient_data", sample_count=0)
 
-    query = db.query(Transaction.price).filter(Transaction.product_title.ilike(f"%{title}%"))
+    base_query = db.query(Transaction.price).filter(Transaction.product_title.ilike(f"%{title}%"))
+    prices: list[int] = []
     if category:
-        query = query.filter(Transaction.category == category)
-    prices = sorted(p for (p,) in query.all() if p is not None)
+        prices = sorted(p for (p,) in base_query.filter(Transaction.category == category).all() if p is not None)
+    if len(prices) < PRICE_HINT_MIN_SAMPLE:
+        prices = sorted(p for (p,) in base_query.all() if p is not None)
 
     if len(prices) < PRICE_HINT_MIN_SAMPLE:
         return schema.PriceHintResponse(status="insufficient_data", sample_count=len(prices))
