@@ -58,6 +58,7 @@ def main():
     db.commit()
 
     product_id = None
+    product2_id = None
     room_id = None
     store_id = None
     try:
@@ -171,6 +172,23 @@ def main():
         trade_point_row = db.get(PointTransaction, trade_point.id)
         assert trade_point_row.region_id == region.id  # 판매자/상품의 동네
         assert trade_point_row.region_id != buyer_region.id  # 구매자 동네가 아님
+
+        # 당근페이 송금 없이 판매자가 직접 "거래완료"로 바꾸는 직거래도 꿈방울이 쌓여야 한다.
+        product2 = trade_service.create_product(
+            db, seller, ProductCreateRequest(title="직거래완료테스트상품", category="기타", desired_price=12000)
+        )
+        product2_id = product2.id
+        before_balance = dream_service.get_point_balance(db, seller, page=1, size=1).balance
+        trade_service.update_product_status(db, seller, product2.id, "SOLD")
+        after = dream_service.get_point_balance(db, seller, page=1, size=1)
+        assert after.balance == before_balance + 12  # 12,000 * 0.1%
+        direct_point_row = db.get(PointTransaction, after.transactions.items[0].id)
+        assert direct_point_row.source == "trade"
+        assert direct_point_row.region_id == region.id  # 상품(거래)이 속한 동네
+        # 이미 SOLD인 걸 다시 SOLD로 바꿔도 중복 적립 안 됨
+        trade_service.update_product_status(db, seller, product2.id, "SOLD")
+        assert dream_service.get_point_balance(db, seller, page=1, size=1).balance == before_balance + 12
+
         seller.region_id = None  # 동네를 바꾼(또는 해제한) 척
         db.commit()
         assert db.get(PointTransaction, trade_point.id).region_id == region.id  # 그대로 유지
@@ -236,12 +254,16 @@ def main():
         if product_id is not None:
             db.query(ProductFavorite).filter_by(product_id=product_id).delete()
             db.query(Product).filter_by(id=product_id).delete()
+        if product2_id is not None:
+            db.query(ProductFavorite).filter_by(product_id=product2_id).delete()
+            db.query(Product).filter_by(id=product2_id).delete()
         if store_id is not None:
             db.query(Store).filter_by(id=store_id).delete()
         db.delete(seller)
         db.delete(buyer)
         db.delete(stranger)
         db.delete(region)
+        db.delete(buyer_region)
         db.commit()
         db.close()
 
