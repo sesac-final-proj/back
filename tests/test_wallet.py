@@ -16,6 +16,7 @@ from app.core.security import hash_password
 from app.models.chat import ChatMessage, ChatRoom, ChatRoomParticipant
 from app.models.favorite import ProductFavorite
 from app.models.product import Product
+from app.models.point import PointTransaction
 from app.models.region import Region
 from app.models.user import User, UserRole
 from app.models.wallet import Store, WalletTransaction
@@ -24,6 +25,7 @@ from app.models.wallet import Store, WalletTransaction
 def main():
     db = SessionLocal()
     region = Region(dong_code="__WALLET_SELFCHECK__", dong_name="지갑검증동", gu_name="검증구", lat=0.0, lng=0.0)
+    buyer_region = Region(dong_code="__WALLET_SC_BUYER__", dong_name="구매자검증동", gu_name="구매자검증구", lat=0.0, lng=0.0)
     seller = User(
         email="__wallet_selfcheck_seller__@example.com",
         password_hash=hash_password("x"),
@@ -42,13 +44,17 @@ def main():
         nickname="wallet_stranger",
         role=UserRole.USER,
     )
-    db.add_all([region, seller, buyer, stranger])
+    db.add_all([region, buyer_region, seller, buyer, stranger])
     db.commit()
     db.refresh(region)
+    db.refresh(buyer_region)
     db.refresh(seller)
     db.refresh(buyer)
     db.refresh(stranger)
     seller.region_id = region.id
+    # 구매자는 일부러 다른 동네로 설정 — 중고거래 포인트가 구매자 동네가 아니라
+    # "상품이 속한(=판매자가 등록한) 동네"로 찍히는지 구분해서 검증하기 위해서.
+    buyer.region_id = buyer_region.id
     db.commit()
 
     product_id = None
@@ -107,6 +113,8 @@ def main():
         assert points.balance == 50
         assert points.transactions.items[0].source == "general_payment"
         assert points.transactions.items[0].amount == 50
+        # 가맹점엔 위치가 없어 결제 시점 구매자의 동네를 스냅샷으로 쓴다.
+        assert db.get(PointTransaction, points.transactions.items[0].id).region_id == buyer_region.id
 
         product = trade_service.create_product(
             db, seller, ProductCreateRequest(title="지갑테스트상품", category="기타", desired_price=30000)
@@ -156,6 +164,16 @@ def main():
         assert points_after_trade.balance == 80
         trade_point = next(t for t in points_after_trade.transactions.items if t.source == "trade")
         assert trade_point.amount == 30 and trade_point.related_id == message.payment.transaction_id
+
+        # region_id 스냅샷 — 구매자(buyer)가 아니라 "상품이 속한 동네"(seller가 등록할 때의
+        # region)로 찍혀야 한다. 나중에 seller가 활동동네를 바꿔도 이 값은 그대로여야
+        # (admin point_summary가 실시간 User.region_id를 join하던 버그를 막는 지점).
+        trade_point_row = db.get(PointTransaction, trade_point.id)
+        assert trade_point_row.region_id == region.id  # 판매자/상품의 동네
+        assert trade_point_row.region_id != buyer_region.id  # 구매자 동네가 아님
+        seller.region_id = None  # 동네를 바꾼(또는 해제한) 척
+        db.commit()
+        assert db.get(PointTransaction, trade_point.id).region_id == region.id  # 그대로 유지
 
         # 5,000원 미만 중고거래는 적립 대상 아님 — 0을 반환하고 세션에 아무것도 안 남긴다
         # (award_points 내부에서 db.add 전에 걸러짐, 별도 방/상품 없이 함수만 직접 호출해 확인).
