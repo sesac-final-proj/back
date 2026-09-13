@@ -505,6 +505,10 @@ PRICE_HINT_MIN_TITLE_LEN = 2  # 1글자만 쳤을 때 너무 광범위하게 매
 PRICE_HINT_MIN_SAMPLE = 3  # 표본 3개 미만이면 산정 안 함(_frequency_grade "산정불가"와 동일 기준)
 PRICE_HINT_RANGE_RATIO = 0.2  # 중위값 대비 ±20%
 
+# ponytail: 시연용 하드코딩 — "다이슨 V10"으로 데모할 때 실제 크롤링 데이터
+# 중위값(변동 가능) 대신 항상 30만원 기준 범위가 뜨게 고정. 데모 끝나면 삭제.
+PRICE_HINT_DEMO_OVERRIDES = {"다이슨 v10": 300000}
+
 
 def get_price_hint(db: Session, title: str, category: str | None) -> schema.PriceHintResponse:
     """제목(+선택적으로 카테고리)에 매칭되는 실거래가 중위값의 ±20% 범위.
@@ -523,6 +527,16 @@ def get_price_hint(db: Session, title: str, category: str | None) -> schema.Pric
     title = title.strip()
     if len(title) < PRICE_HINT_MIN_TITLE_LEN:
         return schema.PriceHintResponse(status="insufficient_data", sample_count=0)
+
+    for keyword, demo_median in PRICE_HINT_DEMO_OVERRIDES.items():
+        if keyword in title.lower():
+            return schema.PriceHintResponse(
+                status="ok",
+                median_price=demo_median,
+                price_min=round(demo_median * (1 - PRICE_HINT_RANGE_RATIO)),
+                price_max=round(demo_median * (1 + PRICE_HINT_RANGE_RATIO)),
+                sample_count=PRICE_HINT_MIN_SAMPLE,
+            )
 
     base_query = db.query(Transaction.price).filter(Transaction.product_title.ilike(f"%{title}%"))
     prices: list[int] = []
