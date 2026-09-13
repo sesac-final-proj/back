@@ -26,8 +26,64 @@ def test_frequency_grade_boundaries():
     assert f(2) == "산정불가" and f(0) == "산정불가"
 
 
+def test_price_hint():
+    """글쓰기 화면 실시간 시세 힌트 — 모델명(V8/V10)별로 다른 중위값이 잡히는지."""
+    db = SessionLocal()
+    region = Region(dong_code="__PH_SELFCHECK__", dong_name="힌트검증동", gu_name="힌트검증구", lat=0.0, lng=0.0)
+    db.add(region)
+    db.commit()
+    db.refresh(region)
+
+    def _tx(title: str, price: int) -> Transaction:
+        return Transaction(
+            product_title=title,
+            category="디지털/가전",
+            price=price,
+            region_id=region.id,
+            status="거래완료",
+            listed_at=date.today(),
+        )
+
+    # 실제 크롤링 데이터와 안 겹치게 고유 마커를 모델명 자리에 박아넣는다
+    # (region 필터가 없는 함수라 region으로는 실데이터와 못 나눔).
+    v8_kw, v10_kw = "__PH_MODEL_V8__", "__PH_MODEL_V10__"
+    rows = [
+        _tx(f"다이슨 {v8_kw} 청소기 팝니다", 55000),
+        _tx(f"다이슨 {v8_kw} 무선청소기 급처", 60000),
+        _tx(f"다이슨 {v8_kw} 미개봉", 65000),
+        _tx(f"다이슨 {v10_kw} 청소기", 90000),
+        _tx(f"다이슨 {v10_kw} 팝니다 급처", 100000),
+        _tx(f"다이슨 {v10_kw} 정품", 110000),
+    ]
+    db.add_all(rows)
+    db.commit()
+    try:
+        v8 = trade_service.get_price_hint(db, f"다이슨 {v8_kw}", None)
+        assert v8.status == "ok" and v8.sample_count == 3
+        assert v8.median_price == 60000
+        assert v8.price_min == 48000 and v8.price_max == 72000  # ±20%
+
+        v10 = trade_service.get_price_hint(db, f"다이슨 {v10_kw}", None)
+        assert v10.status == "ok" and v10.median_price == 100000
+        assert v10.median_price != v8.median_price  # 모델별로 구분돼야 함
+
+        empty = trade_service.get_price_hint(db, "존재안하는모델명xyz", None)
+        assert empty.status == "insufficient_data" and empty.sample_count == 0
+
+        too_short = trade_service.get_price_hint(db, "다", None)
+        assert too_short.status == "insufficient_data"  # 제목 1글자는 조회 자체를 안 함
+
+        print("price-hint self-check OK")
+    finally:
+        db.query(Transaction).filter(Transaction.region_id == region.id).delete(synchronize_session=False)
+        db.delete(region)
+        db.commit()
+        db.close()
+
+
 def main():
     test_frequency_grade_boundaries()
+    test_price_hint()
 
     db = SessionLocal()
     region = Region(
