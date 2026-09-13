@@ -1,11 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
-from app.api.v1.local import schema, service, transit_service
+from app.api.v1.local import schema, service, transit_service, weather_service
 from app.core.db import get_db
 from app.local_info.congestion_service import CongestionUnavailableError, get_congestion_zones
 
 router = APIRouter(prefix="/api/v1/local", tags=["갖가지"])
+
+
+@router.get("/weather")
+def weather(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180)):
+    try:
+        return weather_service.get_weather(lat, lng)
+    except (RuntimeError, OSError, KeyError, ValueError) as error:
+        raise HTTPException(status_code=503, detail="날씨 정보를 불러오지 못했어요.") from error
+
+
+@router.get("/weather/distribution")
+def weather_distribution():
+    try:
+        return Response(content=weather_service.get_weather_distribution(), media_type="image/png", headers={"Cache-Control": "public, max-age=600"})
+    except (RuntimeError, OSError, KeyError, ValueError) as error:
+        raise HTTPException(status_code=503, detail="날씨 분포도를 불러오지 못했어요.") from error
 
 
 @router.get("/danger-signals", response_model=schema.DangerSignalListResponse)
