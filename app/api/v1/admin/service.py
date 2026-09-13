@@ -1,6 +1,7 @@
 import json
 import csv
 import random
+import re
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -33,6 +34,32 @@ from app.api.v1.dream.service import CSV_PATH, JSON_412_PATH, JSON_PARSED_PATH, 
 
 # price-distribution에서 세부유형을 몇 개까지 이름 유지하고 나머지를 "기타"로 묶을지.
 PRICE_DISTRIBUTION_TOP_TYPES = 5
+
+# --------------------------------------------------------------------------
+# 크롤러가 제목 끝에 붙여놓은 위치 태그("... 노원구 상계1동", "... 경기 남양주시", "... 구리")
+# 제거 — analyzer/scripts/train.py의 strip_location_tags()와 동일한 정규식(실측으로 검증된
+# 패턴이라 그대로 이식). 학습 데이터(analyzer 산출물)는 이미 정제됐지만, "최근 수집 데이터"
+# 패널은 transactions 테이블 원본 제목을 그대로 보여줘서 여기서도 별도로 지워야 한다.
+# --------------------------------------------------------------------------
+_SEOUL_GU_SHORT = ["강남", "강동", "강북", "강서", "관악", "광진", "구로", "금천", "노원", "도봉",
+                    "동대문", "동작", "마포", "서대문", "서초", "성동", "성북", "송파", "양천", "영등포",
+                    "용산", "은평", "종로", "중랑"]
+_LOCATION_TAG_RE = re.compile(
+    r"\s+(?:" + "|".join(_SEOUL_GU_SHORT) + r")(?:\s+\S*(?:동|가|리|읍|면))?\s*$"
+)
+_NON_SEOUL_PROVINCES = ["경기", "인천", "강원", "충남", "충북", "전남", "전북", "경남", "경북",
+                         "대전", "대구", "부산", "울산", "광주", "세종"]
+_PROVINCE_LOCATION_TAG_RE = re.compile(
+    r"\s+(?:" + "|".join(_NON_SEOUL_PROVINCES) + r")\s+\S*(?:시|군)\s*$"
+)
+_BARE_ADJACENT_CITY_RE = re.compile(r"\s+(?:구리|남양주|하남)\s*$")
+
+
+def strip_crawler_location_tag(title: str) -> str:
+    stripped = _LOCATION_TAG_RE.sub("", title).strip()
+    stripped = _PROVINCE_LOCATION_TAG_RE.sub("", stripped).strip()
+    stripped = _BARE_ADJACENT_CITY_RE.sub("", stripped).strip()
+    return stripped or title  # 다 지워지면(빈 문자열) 원본 유지 — 있을 수 없는 케이스지만 방어
 PRICE_DISTRIBUTION_DEFAULT_SAMPLE = 2000
 
 
@@ -430,7 +457,7 @@ def get_data_status(db: Session) -> schema.DataStatusResponse:
         recent_transactions=[
             schema.RecentTransactionItem(
                 id=transaction.id,
-                product_title=transaction.product_title,
+                product_title=strip_crawler_location_tag(transaction.product_title),
                 category=transaction.category,
                 price=transaction.price,
                 region_name=(
