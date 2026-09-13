@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 import jwt
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -303,6 +304,22 @@ class AuthNicknameApiTest(unittest.TestCase):
         finally:
             settings.KAKAO_CLIENT_ID = original_kakao_client_id
             settings.KAKAO_REST_API_KEY = original_kakao_rest_api_key
+
+    def test_oauth_callback_failure_redirects_with_error_instead_of_500(self):
+        # 회귀 테스트 — router.py에 HTTPException import가 빠져 있어서 인가 코드
+        # 만료 등 실패 케이스마다 except 절 자체가 NameError로 죽고 500이 뜨던 버그
+        # (프론트 콜백 페이지로 안 돌아가고 백엔드 raw JSON에 사용자가 멈춰 있었음).
+        with patch(
+            "app.api.v1.auth.service.oauth_callback",
+            side_effect=HTTPException(status_code=400, detail="카카오 인가 코드가 만료되었거나 이미 사용되었습니다."),
+        ):
+            response = self.client.get(
+                "/api/v1/auth/oauth/kakao/callback", params={"code": "expired"}, follow_redirects=False
+            )
+
+        self.assertEqual(response.status_code, 307)
+        redirect_query = parse_qs(urlparse(response.headers["location"]).query)
+        self.assertIn("만료", redirect_query["error"][0])
 
     def test_naver_oauth_callback_updates_existing_social_account(self):
         db = self.SessionLocal()
