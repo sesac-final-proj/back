@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     SEOUL_BIKE_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_BIKE_API_KEY", "SEOUL_BIKE_SERVICE"))
     SEOUL_SUBWAY_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_SUBWAY_API_KEY", "SEOUL_SUBWAY_SERVICE", "SEOUL_SUBWAY_SERVIC"))
     SEOUL_CITYDATA_API_KEY: str = Field(default="", repr=False, validation_alias=AliasChoices("SEOUL_CITYDATA_API_KEY", "SEOUL_CITYDATA_SERVICE"))
+    WEATHER_API_KEY: str = Field(default="", repr=False)
+    AIR_KOREA_SERVICE_KEY: str = Field(default="", repr=False)
     OMNIROUTE_API_KEY: str = ""
     OMNIROUTE_BASE_URL: str = "http://localhost:20128/v1"
     OMNIROUTE_MODEL: str = "gpt 5.6"
