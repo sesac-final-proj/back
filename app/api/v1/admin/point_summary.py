@@ -1,10 +1,11 @@
-"""Point ledger summaries use one current primary region per user, without join fan-out."""
+"""Point ledger summaries — grouped by the region snapshot on each transaction, not
+the user's current profile region (that used to reattribute past points whenever a
+user changed neighborhoods, e.g. "영등포구 포인트가 송파구로 바뀜")."""
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.point import PointTransaction
 from app.models.region import Region
-from app.models.user import User
 
 
 def get_point_summary(db: Session) -> dict:
@@ -19,8 +20,7 @@ def get_point_summary(db: Session) -> dict:
             func.count(func.distinct(PointTransaction.user_id)).label("users"),
         )
         .select_from(PointTransaction)
-        .outerjoin(User, User.id == PointTransaction.user_id)
-        .outerjoin(Region, Region.id == User.region_id)
+        .outerjoin(Region, Region.id == PointTransaction.region_id)
         .group_by(district).order_by(district).all()
     )
     return {
@@ -28,6 +28,6 @@ def get_point_summary(db: Session) -> dict:
         "earned": sum(row.earned for row in rows),
         "deducted": sum(row.deducted for row in rows),
         "balance": sum(row.balance for row in rows),
-        "basis": "전체 포인트 원장 · 사용자 현재 대표 동네 기준 · 지역 미확인 포함",
-        "caveat": "적립 당시 지역 이력이 없어 동네 변경 시 구별 귀속이 바뀝니다. 차감은 기부 집행액을 뜻하지 않습니다.",
+        "basis": "전체 포인트 원장 · 적립 당시 동네 스냅샷 기준 · 지역 미확인 포함",
+        "caveat": "차감은 기부 집행액을 뜻하지 않습니다. \"지역 미확인\"은 region_id 스냅샷 도입 이전에 적립된 이력입니다.",
     }

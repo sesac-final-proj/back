@@ -56,7 +56,8 @@ def pay_by_qr(db: Session, user: User, data: schema.QrPayRequest) -> schema.Wall
     user.wallet_balance -= data.amount
     # 일반결제 1% 꿈방울 적립(PRD "꿈가지" 적립 예시) — related_id 없음(QR 결제는
     # wallet_transactions에 기록을 안 남기는 mock이라 이을 대상이 없음).
-    dream_service.award_points(db, user.id, data.amount, "general_payment")
+    # 가맹점(Store)엔 아직 위치 정보가 없어 결제 시점 사용자의 동네를 스냅샷으로 쓴다.
+    dream_service.award_points(db, user.id, data.amount, "general_payment", region_id=user.region_id)
     db.commit()
     db.refresh(user)
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
@@ -114,7 +115,9 @@ def send_payment(
     message = chat_service._post_message(db, room, user.id, "PAYMENT", payment_id=wallet_tx.id)
     product.trade_status = "SOLD"
     # 중고거래 0.1% 꿈방울 적립, 5,000원 미만은 적립 대상 아님(award_points 내부에서 처리).
-    dream_service.award_points(db, user.id, amount, "trade", related_id=wallet_tx.id)
+    # region_id는 구매자가 아니라 "상품(거래)이 속한 동네" 기준 — 실제 거래가 일어난
+    # 동네로 집계되어야 admin 구별 통계가 의미 있다(구매자의 현재 활동동네가 아님).
+    dream_service.award_points(db, user.id, amount, "trade", related_id=wallet_tx.id, region_id=product.region_id)
     db.commit()
     db.refresh(message)
 
