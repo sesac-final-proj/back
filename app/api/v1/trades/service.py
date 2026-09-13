@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.api.v1.dream import service as dream_service
 from app.api.v1.trades import schema
 from app.core import storage
 from app.core.exceptions import AppError, NotFoundError, PermissionDeniedError
@@ -208,7 +209,16 @@ def update_product_status(db: Session, user: User, product_id: int, trade_status
         raise NotFoundError("상품을 찾을 수 없습니다.")
     if product.created_by != user.id:
         raise PermissionDeniedError("본인 상품만 상태를 변경할 수 있습니다.")
+    was_sold = product.trade_status == "SOLD"
     product.trade_status = trade_status
+    # 당근페이(채팅 송금)를 안 거치고 판매자가 직접 "거래완료"로 바꾸는 거래도
+    # 꿈방울이 쌓여야 한다 — wallet.send_payment 쪽만 적립하면 실제 거래 대부분
+    # (직거래/현금)이 적립 없이 넘어간다. region_id는 상품(거래)이 속한 동네 스냅샷.
+    if trade_status == "SOLD" and not was_sold and product.desired_price:
+        # related_id는 wallet_transactions FK라 당근페이 송금이 없는 이 경로에선 못 채움.
+        dream_service.award_points(
+            db, product.created_by, product.desired_price, "trade", region_id=product.region_id,
+        )
     db.commit()
     db.refresh(product)
     return product
