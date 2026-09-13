@@ -500,6 +500,41 @@ def delete_product_image(db: Session, user: User, product_id: int) -> None:
 FREQUENCY_WINDOW_MONTHS = 3
 EVIDENCE_SAMPLE_SIZE = 5
 
+# 글쓰기 화면 실시간 시세 힌트 전용 상수 — 위 가격분석(Analysis) 플로우와 별개.
+PRICE_HINT_MIN_TITLE_LEN = 2  # 1글자만 쳤을 때 너무 광범위하게 매칭되는 것 방지
+PRICE_HINT_MIN_SAMPLE = 3  # 표본 3개 미만이면 산정 안 함(_frequency_grade "산정불가"와 동일 기준)
+PRICE_HINT_RANGE_RATIO = 0.2  # 중위값 대비 ±20%
+
+
+def get_price_hint(db: Session, title: str, category: str | None) -> schema.PriceHintResponse:
+    """제목(+선택적으로 카테고리)에 매칭되는 실거래가 중위값의 ±20% 범위.
+
+    "다이슨 V8"을 치면 V8만, "다이슨 V10"을 치면 V10만 잡히도록 모델 판별 없이
+    제목 부분일치(ILIKE)로 좁힌다 — 같은 물건군이라도 모델 태그가 제목에 그대로
+    들어있는 크롤링 데이터 특성을 그대로 활용(임베딩/모델분류는 과설계, 필요해지면
+    후순위 도입).
+    """
+    title = title.strip()
+    if len(title) < PRICE_HINT_MIN_TITLE_LEN:
+        return schema.PriceHintResponse(status="insufficient_data", sample_count=0)
+
+    query = db.query(Transaction.price).filter(Transaction.product_title.ilike(f"%{title}%"))
+    if category:
+        query = query.filter(Transaction.category == category)
+    prices = sorted(p for (p,) in query.all() if p is not None)
+
+    if len(prices) < PRICE_HINT_MIN_SAMPLE:
+        return schema.PriceHintResponse(status="insufficient_data", sample_count=len(prices))
+
+    median = statistics.median(prices)
+    return schema.PriceHintResponse(
+        status="ok",
+        median_price=round(median),
+        price_min=round(median * (1 - PRICE_HINT_RANGE_RATIO)),
+        price_max=round(median * (1 + PRICE_HINT_RANGE_RATIO)),
+        sample_count=len(prices),
+    )
+
 
 def _frequency_grade(sample_count: int) -> str:
     if sample_count >= 30:
