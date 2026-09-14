@@ -24,7 +24,11 @@ class Store(Base):
 
 
 class WalletTransaction(Base):
-    """당근페이 송금 1건 (mock — 실제 계좌 연동 없음, User.wallet_balance끼리 이체).
+    """당근페이 송금/결제 1건 (mock — 실제 계좌 연동 없음, User.wallet_balance끼리 이체).
+
+    두 종류를 한 테이블에 같이 담는다: (1) 채팅 기반 P2P 송금(chat_room_id/receiver_id 있음),
+    (2) QR 현장결제(store_id 있음, 상대가 User가 아니라 receiver_id/chat_room_id 없음).
+    두 컬럼 다 nullable인 이유가 이거 — 한쪽만 채워진다.
 
     product_id는 상품이 나중에 삭제돼도 송금 기록은 남아야 해서 nullable —
     trades/service.py의 delete_product가 ChatRoom.product_id와 동일하게 참조만 끊는다.
@@ -33,11 +37,12 @@ class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    chat_room_id: Mapped[int] = mapped_column(ForeignKey("chat_rooms.id"), nullable=False)
+    chat_room_id: Mapped[int | None] = mapped_column(ForeignKey("chat_rooms.id"), nullable=True)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    receiver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    store_id: Mapped[int | None] = mapped_column(ForeignKey("stores.id"), nullable=True)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    # sender 기준 송금 후 잔액 — 상세내역 화면의 "거래후잔액".
+    # sender 기준 결제 후 잔액 — 상세내역 화면의 "거래후잔액".
     balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
