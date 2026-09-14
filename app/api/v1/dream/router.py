@@ -17,6 +17,15 @@ def list_facilities(
     return service.list_facilities(district, limit)
 
 
+@router.get("/district-summary", response_model=schema.DistrictDonationSummaryResponse)
+def get_district_summary(
+    district: str = Query(min_length=2, max_length=12),
+    db: Session = Depends(get_db),
+):
+    # 로그인 없이도 동네 화면에서 보여주는 집계라 인증 불필요.
+    return service.get_district_donation_summary(db, district)
+
+
 @router.get("/points", response_model=schema.PointBalanceResponse)
 def get_points(
     page: int = Query(default=1, ge=1),

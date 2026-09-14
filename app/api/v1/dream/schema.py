@@ -50,6 +50,12 @@ class FacilityListResponse(BaseModel):
     notice: str | None = None
 
 
+class DistrictDonationSummaryResponse(BaseModel):
+    district: str
+    participation_count: int
+    total_points: int
+
+
 class DonationSettingRequest(BaseModel):
     donation_rate: int = Field(ge=0, le=100)
     facility_id: int
