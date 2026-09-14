@@ -577,3 +577,28 @@ def get_point_balance(db: Session, user: User, page: int, size: int) -> schema.P
     items = [schema.PointTransactionItem.model_validate(r) for r in rows]
     return schema.PointBalanceResponse(balance=balance, transactions=Page(items=items, total=total))
 
+
+def get_district_donation_summary(db: Session, district: str) -> schema.DistrictDonationSummaryResponse:
+    """꿈가지 화면 "기부 참여"/"동네 기부 진행률" — 지금까지는 프론트에 0으로
+    하드코딩돼 있어서 실제 중고거래/현장결제로 꿈방울이 쌓여도 반영이 안 됐다.
+
+    적립 1건 = 기부 1회 참여로 세고(서비스 컨셉상 결제할 때마다 자동으로 꿈가지에
+    동참하는 구조), 누적 꿈방울 합계를 그대로 모금액(원)으로 보여준다 — 실제 환전
+    로직은 없어 1방울=1원으로 취급하는 데모 단순화(ponytail: 나중에 실제 기부 집행
+    전환율이 정해지면 여기만 바꾸면 됨). region_id 스냅샷 기준이라 사용자가 나중에
+    동네를 옮겨도 과거 적립은 그 동네에 그대로 남는다(point_summary와 동일 원칙).
+    """
+    row = (
+        db.query(
+            func.count(PointTransaction.id),
+            func.coalesce(func.sum(PointTransaction.amount), 0),
+        )
+        .join(Region, Region.id == PointTransaction.region_id)
+        .filter(Region.gu_name == district, PointTransaction.amount > 0)
+        .first()
+    )
+    count, total = row
+    return schema.DistrictDonationSummaryResponse(
+        district=district, participation_count=count or 0, total_points=int(total or 0)
+    )
+

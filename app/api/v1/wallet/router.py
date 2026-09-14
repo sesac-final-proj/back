@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.chats.schema import MessageResponse
@@ -13,6 +13,16 @@ router = APIRouter(prefix="/api/v1/wallet", tags=["당근페이"])
 @router.get("/me", response_model=schema.WalletBalanceResponse)
 def get_my_balance(user: User = Depends(get_current_user)):
     return service.get_balance(user)
+
+
+@router.get("/transactions", response_model=schema.WalletHistoryResponse)
+def list_transactions(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return service.list_wallet_transactions(db, user, page, size)
 
 
 @router.post(

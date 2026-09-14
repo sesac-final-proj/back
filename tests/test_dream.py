@@ -51,5 +51,62 @@ class DreamFacilityApiTest(unittest.TestCase):
         with self.assertRaises(HTTPException):
             service.list_facilities("수원시", 50)
 
+
+class DistrictDonationSummaryTest(unittest.TestCase):
+    """꿈가지 화면 "기부 참여"/"동네 기부 진행률" — 실 DB에 임시 지역/유저/적립을
+    만들었다가 끝나면 지운다. 프론트에 0으로 하드코딩돼 있던 걸 실데이터로 바꾼
+    버그 수정의 회귀 테스트."""
+
+    def setUp(self):
+        from app.core.db import SessionLocal
+        from app.core.security import hash_password
+        from app.models.point import PointTransaction
+        from app.models.region import Region
+        from app.models.user import User, UserRole
+
+        self.db = SessionLocal()
+        self.region = Region(
+            dong_code="__DREAM_DIST_SC__", dong_name="기부검증동", gu_name="__기부검증구__", lat=0.0, lng=0.0
+        )
+        self.user = User(
+            email="__dream_district_selfcheck__@example.com",
+            password_hash=hash_password("x"),
+            nickname="dream_district_sc",
+            role=UserRole.USER,
+        )
+        self.db.add_all([self.region, self.user])
+        self.db.commit()
+        self.db.refresh(self.region)
+        self.db.refresh(self.user)
+        self.db.add_all(
+            [
+                PointTransaction(user_id=self.user.id, amount=50, source="general_payment", region_id=self.region.id),
+                PointTransaction(user_id=self.user.id, amount=30, source="trade", region_id=self.region.id),
+                # 차감 이력은 참여 횟수/모금액에서 빠져야 함(아직 기부 실행 로직은 없지만 방어적으로).
+                PointTransaction(user_id=self.user.id, amount=-10, source="trade", region_id=self.region.id),
+            ]
+        )
+        self.db.commit()
+
+    def tearDown(self):
+        from app.models.point import PointTransaction
+
+        self.db.query(PointTransaction).filter_by(user_id=self.user.id).delete()
+        self.db.delete(self.user)
+        self.db.delete(self.region)
+        self.db.commit()
+        self.db.close()
+
+    def test_counts_only_positive_entries_in_that_district(self):
+        summary = service.get_district_donation_summary(self.db, "__기부검증구__")
+        self.assertEqual(summary.participation_count, 2)  # +50, +30만 (음수 -10 제외)
+        self.assertEqual(summary.total_points, 80)
+
+    def test_no_activity_district_returns_zero(self):
+        summary = service.get_district_donation_summary(self.db, "__존재안하는구__")
+        self.assertEqual(summary.participation_count, 0)
+        self.assertEqual(summary.total_points, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

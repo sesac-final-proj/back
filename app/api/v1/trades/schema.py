@@ -152,3 +152,17 @@ class EvidenceResponse(BaseModel):
     avg_interest_count: float
     sample_transactions: list[SimilarTransactionItem]
     computed_at: datetime
+
+
+class PriceHintResponse(BaseModel):
+    """글쓰기 화면에서 제목 입력만으로 실시간으로 보여주는 시세 힌트.
+
+    Analysis(가격분석) 플로우와 달리 별도 리소스를 만들지 않고 그때그때 계산만
+    해서 돌려준다 — 타이핑 중에 매번 호출되므로 가벼워야 한다.
+    """
+
+    status: Literal["ok", "insufficient_data"]
+    median_price: int | None = None
+    price_min: int | None = None
+    price_max: int | None = None
+    sample_count: int

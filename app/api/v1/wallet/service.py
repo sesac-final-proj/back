@@ -1,4 +1,7 @@
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+from app.core.pagination import Page
 
 from app.api.v1.chats import service as chat_service
 from app.api.v1.chats import schema as chat_schema
@@ -16,11 +19,59 @@ def get_balance(user: User) -> schema.WalletBalanceResponse:
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
 
 
+def list_wallet_transactions(db: Session, user: User, page: int, size: int) -> schema.WalletHistoryResponse:
+    query = db.query(WalletTransaction).filter(
+        or_(WalletTransaction.sender_id == user.id, WalletTransaction.receiver_id == user.id)
+    )
+    total = query.count()
+    rows = query.order_by(WalletTransaction.created_at.desc()).offset((page - 1) * size).limit(size).all()
+
+    counterpart_ids = {
+        (tx.receiver_id if tx.sender_id == user.id else tx.sender_id) for tx in rows
+    } - {None}
+    counterparts = {u.id: u for u in db.query(User).filter(User.id.in_(counterpart_ids)).all()} if counterpart_ids else {}
+    product_ids = {tx.product_id for tx in rows if tx.product_id is not None}
+    products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()} if product_ids else {}
+    store_ids = {tx.store_id for tx in rows if tx.store_id is not None}
+    stores = {s.id: s for s in db.query(Store).filter(Store.id.in_(store_ids)).all()} if store_ids else {}
+
+    items = []
+    for tx in rows:
+        # 충전은 sender_id에 "잔액이 바뀐 사람"만 채워두는 관례라 상대가 없다 —
+        # 무조건 들어온 돈("+")으로 취급한다.
+        is_sender = tx.type != "CHARGE" and tx.sender_id == user.id
+        counterpart_id = tx.receiver_id if is_sender else tx.sender_id
+        counterpart = counterparts.get(counterpart_id) if counterpart_id and tx.type != "CHARGE" else None
+        product = products.get(tx.product_id) if tx.product_id else None
+        store = stores.get(tx.store_id) if tx.store_id else None
+        items.append(
+            schema.WalletTransactionItem(
+                id=tx.id,
+                type=tx.type,
+                counterpart_nickname=counterpart.nickname if counterpart else None,
+                store_name=store.name if store else None,
+                is_sender=is_sender,
+                amount=tx.amount,
+                balance_after=tx.balance_after,
+                product_title=product.title if product else None,
+                created_at=tx.created_at,
+            )
+        )
+    return schema.WalletHistoryResponse(balance=user.wallet_balance, transactions=Page(items=items, total=total))
+
+
 # ponytail: 실제 계좌 자동충전 연동은 스코프 밖(docs/carrot-pay-trade-flow-plan.md 6절) —
-# 은행 계좌 검증 없이 잔액만 그대로 올려준다. 송금과 달리 상대가 없어 wallet_transactions에
-# 남길 것도 없으니 잔액만 갱신.
+# 은행 계좌 검증 없이 잔액만 그대로 올려준다.
 def charge_wallet(db: Session, user: User, amount: int) -> schema.WalletBalanceResponse:
     user.wallet_balance += amount
+    db.add(
+        WalletTransaction(
+            type="CHARGE",
+            sender_id=user.id,
+            amount=amount,
+            balance_after=user.wallet_balance,
+        )
+    )
     db.commit()
     db.refresh(user)
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
@@ -45,18 +96,23 @@ def get_store(db: Session, store_id: int) -> schema.StoreResponse:
     return schema.StoreResponse(id=store.id, name=store.name, image_url=image_url)
 
 
-# ponytail: QR 결제도 charge_wallet과 같은 이유로 mock — 가맹점은 User가 아니라 잔액을
-# 안 가진 Store rows일 뿐이라 wallet_transactions에 남길 상대(receiver)가 없다.
-# 손님 잔액 차감만 한다.
 def pay_by_qr(db: Session, user: User, data: schema.QrPayRequest) -> schema.WalletBalanceResponse:
     if db.get(Store, data.store_id) is None:
         raise NotFoundError("가맹점을 찾을 수 없습니다.")
     if user.wallet_balance < data.amount:
         raise AppError("잔액이 부족합니다.")
     user.wallet_balance -= data.amount
-    # 일반결제 1% 꿈방울 적립(PRD "꿈가지" 적립 예시) — related_id 없음(QR 결제는
-    # wallet_transactions에 기록을 안 남기는 mock이라 이을 대상이 없음).
-    # 가맹점(Store)엔 아직 위치 정보가 없어 결제 시점 사용자의 동네를 스냅샷으로 쓴다.
+    db.add(
+        WalletTransaction(
+            type="QR_PAYMENT",
+            sender_id=user.id,
+            store_id=data.store_id,
+            amount=data.amount,
+            balance_after=user.wallet_balance,
+        )
+    )
+    # 일반결제 1% 꿈방울 적립(PRD "꿈가지" 적립 예시) — 가맹점(Store)엔 아직 위치 정보가
+    # 없어 결제 시점 사용자의 동네를 스냅샷으로 쓴다.
     dream_service.award_points(db, user.id, data.amount, "general_payment", region_id=user.region_id)
     db.commit()
     db.refresh(user)
@@ -102,6 +158,7 @@ def send_payment(
     db.flush()  # balance_after에 반영할 sender 잔액 확정
 
     wallet_tx = WalletTransaction(
+        type="TRANSFER",
         chat_room_id=room.id,
         product_id=product.id,
         sender_id=user.id,

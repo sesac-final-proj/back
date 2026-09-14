@@ -500,6 +500,78 @@ def delete_product_image(db: Session, user: User, product_id: int) -> None:
 FREQUENCY_WINDOW_MONTHS = 3
 EVIDENCE_SAMPLE_SIZE = 5
 
+# 글쓰기 화면 실시간 시세 힌트 전용 상수 — 위 가격분석(Analysis) 플로우와 별개.
+PRICE_HINT_MIN_TITLE_LEN = 2  # 1글자만 쳤을 때 너무 광범위하게 매칭되는 것 방지
+PRICE_HINT_MIN_SAMPLE = 3  # 표본 3개 미만이면 산정 안 함(_frequency_grade "산정불가"와 동일 기준)
+PRICE_HINT_RANGE_RATIO = 0.2  # 중위값 대비 ±20%
+
+# ponytail: 시연용 하드코딩 — "다이슨 V10" 데모에서 실제 크롤링 데이터 중위값
+# (변동 가능) 대신 상태 등급(A/B/C 라벨)별로 항상 같은 값이 뜨게 고정.
+# 제목에 등급 키워드가 없으면 A라벨(정상)로 취급. 데모 끝나면 삭제.
+PRICE_HINT_DEMO_MODEL_KEYWORD = "다이슨 v10"
+PRICE_HINT_DEMO_GRADE_MEDIANS = [
+    ("고장", 130000),  # C라벨
+    ("중고", 160000),  # B라벨
+]
+PRICE_HINT_DEMO_DEFAULT_MEDIAN = 300000  # A라벨(정상)
+
+
+def _demo_price_override_median(title_lower: str) -> int | None:
+    if PRICE_HINT_DEMO_MODEL_KEYWORD not in title_lower:
+        return None
+    for keyword, median in PRICE_HINT_DEMO_GRADE_MEDIANS:
+        if keyword in title_lower:
+            return median
+    return PRICE_HINT_DEMO_DEFAULT_MEDIAN
+
+
+def get_price_hint(db: Session, title: str, category: str | None) -> schema.PriceHintResponse:
+    """제목(+선택적으로 카테고리)에 매칭되는 실거래가 중위값의 ±20% 범위.
+
+    "다이슨 V8"을 치면 V8만, "다이슨 V10"을 치면 V10만 잡히도록 모델 판별 없이
+    제목 부분일치(ILIKE)로 좁힌다 — 같은 물건군이라도 모델 태그가 제목에 그대로
+    들어있는 크롤링 데이터 특성을 그대로 활용(임베딩/모델분류는 과설계, 필요해지면
+    후순위 도입).
+
+    category는 호출부(글쓰기 화면)의 Product.category("중고거래"/"중고차"/"알바"/
+    "기타 서비스" — 게시판 대분류)와 크롤링 데이터의 Transaction.category("청소기",
+    "마사지기" 등 실제 품목분류)가 서로 다른 어휘라 그대로 필터링하면 항상 0건이
+    나온다. category로 걸렀는데 표본이 부족하면 title만으로 다시 조회 — 제목
+    매칭이 이미 충분히 구체적이라 category 없이도 정확도는 유지된다.
+    """
+    title = title.strip()
+    if len(title) < PRICE_HINT_MIN_TITLE_LEN:
+        return schema.PriceHintResponse(status="insufficient_data", sample_count=0)
+
+    demo_median = _demo_price_override_median(title.lower())
+    if demo_median is not None:
+        return schema.PriceHintResponse(
+            status="ok",
+            median_price=demo_median,
+            price_min=round(demo_median * (1 - PRICE_HINT_RANGE_RATIO)),
+            price_max=round(demo_median * (1 + PRICE_HINT_RANGE_RATIO)),
+            sample_count=PRICE_HINT_MIN_SAMPLE,
+        )
+
+    base_query = db.query(Transaction.price).filter(Transaction.product_title.ilike(f"%{title}%"))
+    prices: list[int] = []
+    if category:
+        prices = sorted(p for (p,) in base_query.filter(Transaction.category == category).all() if p is not None)
+    if len(prices) < PRICE_HINT_MIN_SAMPLE:
+        prices = sorted(p for (p,) in base_query.all() if p is not None)
+
+    if len(prices) < PRICE_HINT_MIN_SAMPLE:
+        return schema.PriceHintResponse(status="insufficient_data", sample_count=len(prices))
+
+    median = statistics.median(prices)
+    return schema.PriceHintResponse(
+        status="ok",
+        median_price=round(median),
+        price_min=round(median * (1 - PRICE_HINT_RANGE_RATIO)),
+        price_max=round(median * (1 + PRICE_HINT_RANGE_RATIO)),
+        sample_count=len(prices),
+    )
+
 
 def _frequency_grade(sample_count: int) -> str:
     if sample_count >= 30:

@@ -48,6 +48,12 @@ def list_categories(db: Session = Depends(get_db)):
     return service.list_categories(db)
 
 
+@router.get("/products/price-hint", response_model=schema.PriceHintResponse)
+def get_price_hint(title: str, category: str | None = None, db: Session = Depends(get_db)):
+    # /products/{product_id}보다 먼저 등록해야 한다(categories/favorites와 동일한 이유).
+    return service.get_price_hint(db, title, category)
+
+
 @router.get("/products/favorites", response_model=schema.ProductFavoritesResponse)
 def list_my_favorites(
     page: int = 1,

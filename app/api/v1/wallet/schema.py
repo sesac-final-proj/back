@@ -2,9 +2,28 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.core.pagination import Page
+
 
 class WalletBalanceResponse(BaseModel):
     balance: int
+
+
+class WalletTransactionItem(BaseModel):
+    id: int
+    type: str
+    counterpart_nickname: str | None
+    store_name: str | None
+    is_sender: bool
+    amount: int
+    balance_after: int
+    product_title: str | None
+    created_at: datetime
+
+
+class WalletHistoryResponse(BaseModel):
+    balance: int
+    transactions: Page[WalletTransactionItem]
 
 
 class PaymentCreateRequest(BaseModel):
