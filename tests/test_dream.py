@@ -107,6 +107,21 @@ class DistrictDonationSummaryTest(unittest.TestCase):
         self.assertEqual(summary.participation_count, 0)
         self.assertEqual(summary.total_points, 0)
 
+    def test_null_region_id_still_counted_via_fallback_join(self):
+        """INNER JOIN이었을 때 재현되던 버그 — region_id가 NULL인 행이 통째로 집계에서
+        빠지지 않고 award_points의 기본 지역(영등포구)으로 잡혀야 한다."""
+        from app.models.point import PointTransaction
+
+        orphan = PointTransaction(user_id=self.user.id, amount=100, source="general_payment", region_id=None)
+        self.db.add(orphan)
+        self.db.commit()
+        try:
+            summary = service.get_district_donation_summary(self.db, service.FALLBACK_REGION_GU_NAME)
+            self.assertGreaterEqual(summary.total_points, 100)
+        finally:
+            self.db.delete(orphan)
+            self.db.commit()
+
 
 if __name__ == "__main__":
     unittest.main()

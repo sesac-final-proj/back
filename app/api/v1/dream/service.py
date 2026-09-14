@@ -516,6 +516,7 @@ TRADE_POINT_MIN_AMOUNT = 5000  # 중고거래는 5,000원 이상만 적립 대�
 # ponytail: 활동동네를 아직 안 정한 사용자(QR 가맹점 결제 등 위치 정보가 아예 없는 경우
 # 포함)의 적립 기본 소속 — "지역 미확인"으로 관리자 화면에 안 뜨게 하는 fallback.
 FALLBACK_REGION_DONG_CODE = "TMP-YDP-영등포구"
+FALLBACK_REGION_GU_NAME = "영등포구"  # 위 dong_code가 가리키는 Region의 gu_name과 반드시 일치해야 함
 
 
 def _fallback_region_id(db: Session) -> int | None:
@@ -587,14 +588,21 @@ def get_district_donation_summary(db: Session, district: str) -> schema.District
     로직은 없어 1방울=1원으로 취급하는 데모 단순화(ponytail: 나중에 실제 기부 집행
     전환율이 정해지면 여기만 바꾸면 됨). region_id 스냅샷 기준이라 사용자가 나중에
     동네를 옮겨도 과거 적립은 그 동네에 그대로 남는다(point_summary와 동일 원칙).
+
+    INNER JOIN이 아니라 LEFT JOIN + COALESCE로 쓴다 — award_points가 region_id를
+    못 채운 행(폴백 지역 row가 배포 환경에 시딩 안 됐거나 등 어떤 이유로든)이 있어도
+    이 집계에서 통째로 조용히 빠지는 대신 award_points와 같은 기본 지역으로 잡히게
+    하는 안전망(admin/point_summary.py와 동일 패턴).
     """
+    gu_name = func.coalesce(Region.gu_name, FALLBACK_REGION_GU_NAME)
     row = (
         db.query(
             func.count(PointTransaction.id),
             func.coalesce(func.sum(PointTransaction.amount), 0),
         )
-        .join(Region, Region.id == PointTransaction.region_id)
-        .filter(Region.gu_name == district, PointTransaction.amount > 0)
+        .select_from(PointTransaction)
+        .outerjoin(Region, Region.id == PointTransaction.region_id)
+        .filter(gu_name == district, PointTransaction.amount > 0)
         .first()
     )
     count, total = row
