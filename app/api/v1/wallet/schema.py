@@ -11,6 +11,7 @@ class WalletBalanceResponse(BaseModel):
 
 class WalletTransactionItem(BaseModel):
     id: int
+    type: str
     counterpart_nickname: str | None
     store_name: str | None
     is_sender: bool

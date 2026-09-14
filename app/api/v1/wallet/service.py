@@ -37,14 +37,17 @@ def list_wallet_transactions(db: Session, user: User, page: int, size: int) -> s
 
     items = []
     for tx in rows:
-        is_sender = tx.sender_id == user.id
+        # 충전은 sender_id에 "잔액이 바뀐 사람"만 채워두는 관례라 상대가 없다 —
+        # 무조건 들어온 돈("+")으로 취급한다.
+        is_sender = tx.type != "CHARGE" and tx.sender_id == user.id
         counterpart_id = tx.receiver_id if is_sender else tx.sender_id
-        counterpart = counterparts.get(counterpart_id) if counterpart_id else None
+        counterpart = counterparts.get(counterpart_id) if counterpart_id and tx.type != "CHARGE" else None
         product = products.get(tx.product_id) if tx.product_id else None
         store = stores.get(tx.store_id) if tx.store_id else None
         items.append(
             schema.WalletTransactionItem(
                 id=tx.id,
+                type=tx.type,
                 counterpart_nickname=counterpart.nickname if counterpart else None,
                 store_name=store.name if store else None,
                 is_sender=is_sender,
@@ -58,10 +61,17 @@ def list_wallet_transactions(db: Session, user: User, page: int, size: int) -> s
 
 
 # ponytail: 실제 계좌 자동충전 연동은 스코프 밖(docs/carrot-pay-trade-flow-plan.md 6절) —
-# 은행 계좌 검증 없이 잔액만 그대로 올려준다. 송금과 달리 상대가 없어 wallet_transactions에
-# 남길 것도 없으니 잔액만 갱신.
+# 은행 계좌 검증 없이 잔액만 그대로 올려준다.
 def charge_wallet(db: Session, user: User, amount: int) -> schema.WalletBalanceResponse:
     user.wallet_balance += amount
+    db.add(
+        WalletTransaction(
+            type="CHARGE",
+            sender_id=user.id,
+            amount=amount,
+            balance_after=user.wallet_balance,
+        )
+    )
     db.commit()
     db.refresh(user)
     return schema.WalletBalanceResponse(balance=user.wallet_balance)
@@ -94,6 +104,7 @@ def pay_by_qr(db: Session, user: User, data: schema.QrPayRequest) -> schema.Wall
     user.wallet_balance -= data.amount
     db.add(
         WalletTransaction(
+            type="QR_PAYMENT",
             sender_id=user.id,
             store_id=data.store_id,
             amount=data.amount,
@@ -147,6 +158,7 @@ def send_payment(
     db.flush()  # balance_after에 반영할 sender 잔액 확정
 
     wallet_tx = WalletTransaction(
+        type="TRANSFER",
         chat_room_id=room.id,
         product_id=product.id,
         sender_id=user.id,
