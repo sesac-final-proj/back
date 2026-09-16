@@ -1,0 +1,612 @@
+import csv
+import hashlib
+import json
+from pathlib import Path
+from urllib.parse import quote
+
+from fastapi import HTTPException, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.api.v1.dream import schema
+from app.api.v1.real_estate.service import _fetch_json, _geocode
+from app.core.config import settings
+from app.core.pagination import Page
+from app.models.point import PointTransaction
+from app.models.region import Region
+from app.models.user import User
+
+DISTRICT_SERVICES = {
+    "강남구": "fcltOpenInfo_GN",
+    "강동구": "fcltOpenInfo_GD",
+    "강북구": "fcltOpenInfo_GB",
+    "강서구": "fcltOpenInfo_GS",
+    "관악구": "fcltOpenInfo_GA",
+    "광진구": "fcltOpenInfo_GJ",
+    "구로구": "fcltOpenInfo_GR",
+    "금천구": "fcltOpenInfo_GC",
+    "노원구": "fcltOpenInfo_NW",
+    "도봉구": "fcltOpenInfo_DB",
+    "동대문구": "fcltOpenInfo_DD",
+    "동작구": "fcltOpenInfo_DJ",
+    "마포구": "fcltOpenInfo_MP",
+    "서대문구": "fcltOpenInfo_SM",
+    "서초구": "fcltOpenInfo_SC",
+    "성동구": "fcltOpenInfo_SD",
+    "성북구": "fcltOpenInfo_SB",
+    "송파구": "fcltOpenInfo_SP",
+    "양천구": "fcltOpenInfo_YC",
+    "영등포구": "fcltOpenInfo_YD",
+    "용산구": "fcltOpenInfo_YS",
+    "은평구": "fcltOpenInfo_EP",
+    "종로구": "fcltOpenInfo_JN",
+    "중구": "fcltOpenInfo_JG",
+    "중랑구": "fcltOpenInfo_JR",
+}
+
+DISTRICT_DEFAULT_COORDS: dict[str, tuple[float, float]] = {
+    "강남구": (37.5172, 127.0473),
+    "강동구": (37.5301, 127.1238),
+    "강북구": (37.6396, 127.0257),
+    "강서구": (37.5509, 126.8495),
+    "관악구": (37.4784, 126.9516),
+    "광진구": (37.5385, 127.0822),
+    "구로구": (37.4954, 126.8874),
+    "금천구": (37.4568, 126.8955),
+    "노원구": (37.6542, 127.0568),
+    "도봉구": (37.6688, 127.0471),
+    "동대문구": (37.5744, 127.0400),
+    "동작구": (37.5124, 126.9393),
+    "마포구": (37.5663, 126.9016),
+    "서대문구": (37.5791, 126.9368),
+    "서초구": (37.4837, 127.0324),
+    "성동구": (37.5635, 127.0369),
+    "성북구": (37.5894, 127.0167),
+    "송파구": (37.5145, 127.1060),
+    "양천구": (37.5169, 126.8665),
+    "영등포구": (37.5264, 126.8963),
+    "용산구": (37.5326, 126.9900),
+    "은평구": (37.6027, 126.9291),
+    "종로구": (37.5730, 126.9794),
+    "중구": (37.5641, 126.9979),
+    "중랑구": (37.6066, 127.0927),
+}
+
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
+CSV_PATH = PROJECT_ROOT / "back" / "data" / "dream_child_facilities.csv"
+if not CSV_PATH.exists():
+    CSV_PATH = PROJECT_ROOT / "data" / "dream_child_facilities.csv"
+
+JSON_412_PATH = PROJECT_ROOT / "all_seoul_centers_412.json"
+JSON_PARSED_PATH = PROJECT_ROOT / "all_districts_parsed.json"
+REPRESENTATIVE_25_PATH = PROJECT_ROOT / "final_25_districts_representative_centers.json"
+
+OFFICIAL_FACILITY_URL = "https://umppa.seoul.go.kr/icare/user/fcltyInfoManage/BD_selectFcltyInfoManage.do"
+
+
+def _facility_trust_checklist(
+    *,
+    name: str,
+    address: str,
+    phone: str | None,
+    homepage_url: str | None,
+    operation_status: str | None,
+    lat: float | None,
+    lng: float | None,
+    matched_official_center: bool,
+) -> dict[str, str]:
+    return {
+        "name": "시설명 확인" if name else "시설명 누락",
+        "address": "주소 확인" if address else "주소 누락",
+        "phone": "전화번호 확인" if phone else "전화번호 미확인",
+        "homepage": "공식 상세 링크 확인" if homepage_url and homepage_url != OFFICIAL_FACILITY_URL and homepage_url not in ("http://", "https://") else "공식 목록 링크",
+        "operation": "운영 상태 확인" if operation_status else "운영 상태 미확인",
+        "coordinate": "좌표 확인" if lat is not None and lng is not None else "좌표 미확인",
+        "official_match": "412개 전처리 시설과 매칭" if matched_official_center else "전처리 매칭 없음",
+    }
+
+
+def _facility_trust_score(checklist: dict[str, str]) -> int:
+    weights = {
+        "name": 12,
+        "address": 18,
+        "phone": 12,
+        "homepage": 12,
+        "operation": 14,
+        "coordinate": 18,
+        "official_match": 14,
+    }
+    positive = {
+        "name": "확인",
+        "address": "확인",
+        "phone": "확인",
+        "homepage": "확인",
+        "operation": "확인",
+        "coordinate": "확인",
+        "official_match": "매칭",
+    }
+    return sum(weight for key, weight in weights.items() if positive[key] in checklist.get(key, ""))
+
+
+def _rank_trusted_facilities(items: list[schema.FacilityItem]) -> list[schema.FacilityItem]:
+    ranked = sorted(
+        items,
+        key=lambda item: (
+            -(item.total_score or 0),
+            item.name,
+            item.address,
+        ),
+    )
+    rank_by_id = {item.id: index + 1 for index, item in enumerate(ranked)}
+    selected_ids = {item.id for item in ranked[:2]}
+    for item in items:
+        item.district_rank = rank_by_id.get(item.id)
+        item.is_representative = item.id in selected_ids
+        item.is_selected = item.id in selected_ids
+    return items
+
+
+def _build_facility_item(
+    *,
+    identity: str,
+    name: str,
+    district: str,
+    facility_type: str,
+    address: str,
+    phone: str | None = None,
+    homepage_url: str | None = None,
+    established_date: str | None = None,
+    operation_status: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    matched_official_center: bool = False,
+) -> schema.FacilityItem:
+    checklist = _facility_trust_checklist(
+        name=name,
+        address=address,
+        phone=phone,
+        homepage_url=homepage_url,
+        operation_status=operation_status,
+        lat=lat,
+        lng=lng,
+        matched_official_center=matched_official_center,
+    )
+    return schema.FacilityItem(
+        id=hashlib.sha1(identity.encode("utf-8")).hexdigest()[:16],
+        name=name,
+        district=district,
+        facility_type=facility_type,
+        address=address,
+        phone=phone,
+        homepage_url=homepage_url,
+        established_date=established_date,
+        operation_status=operation_status,
+        lat=lat,
+        lng=lng,
+        total_score=_facility_trust_score(checklist),
+        checklist=checklist,
+    )
+
+
+def _load_412_centers() -> list[dict]:
+    if not JSON_412_PATH.exists():
+        return []
+    try:
+        with JSON_412_PATH.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _load_representative_centers() -> list[dict]:
+    if not REPRESENTATIVE_25_PATH.exists():
+        return []
+    try:
+        with REPRESENTATIVE_25_PATH.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _load_parsed_centers() -> dict[str, list[dict]]:
+    if not JSON_PARSED_PATH.exists():
+        return {}
+    try:
+        with JSON_PARSED_PATH.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _csv_rows(district: str) -> list[dict[str, str]]:
+    if not CSV_PATH.exists():
+        return []
+
+    rows: list[dict[str, str]] = []
+    for enc in ("cp949", "euc-kr", "utf-8-sig", "utf-8"):
+        try:
+            with CSV_PATH.open("r", encoding=enc, newline="") as file:
+                rows = list(csv.DictReader(file))
+                if rows:
+                    break
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+
+    matched = []
+    for row in rows:
+        address = row.get("소재지전체주소") or row.get("도로명전체주소") or ""
+        status_str = (row.get("영업상태명") or "").strip()
+        if district in address and ("운영" in status_str or status_str in ("운영", "운영중")):
+            matched.append(row)
+    return matched
+
+
+def _rows(district: str) -> tuple[list[dict], str]:
+    service_name = DISTRICT_SERVICES.get(district)
+    if not service_name:
+        raise HTTPException(status_code=400, detail="지원하지 않는 자치구입니다.")
+
+    api_key = (settings.SEOUL_OPEN_DATA_API_KEY or settings.SEOUL_OPEN_API_KEY).strip() or "sample"
+    end_index = 5 if api_key == "sample" else 1000
+    path = "/".join(quote(str(part), safe="") for part in (api_key, "json", service_name, 1, end_index))
+    data = _fetch_json(f"{settings.SEOUL_OPEN_API_BASE_URL}/{path}/")
+    payload = data.get(service_name) or {}
+    result = payload.get("RESULT") or data.get("RESULT") or {}
+    if result.get("CODE") not in (None, "INFO-000", "INFO-200"):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=result.get("MESSAGE") or "서울시 시설 API 요청에 실패했습니다.",
+        )
+    return payload.get("row") or [], "seoul_sample" if api_key == "sample" else "seoul_open_data"
+
+
+def list_facilities(district: str, limit: int) -> schema.FacilityListResponse:
+    district = district.strip()
+    if district not in DISTRICT_SERVICES:
+        raise HTTPException(status_code=400, detail="지원하지 않는 자치구입니다.")
+
+    rep_centers = _load_representative_centers()
+    centers_412 = _load_412_centers()
+    parsed_centers = _load_parsed_centers().get(district, [])
+    default_lat, default_lng = DISTRICT_DEFAULT_COORDS.get(district, (37.5665, 126.9780))
+
+    rep = next((r for r in rep_centers if r.get("district") == district), None)
+    rep_hp = None
+    if rep:
+        rep_hp = (rep.get("homepage") or "").strip()
+        if not rep_hp or rep_hp in ("http://", "https://"):
+            rep_hp = (rep.get("detail_url") or "").strip() or None
+
+    # 1. Open API 조회 시도
+    try:
+        rows, source = _rows(district)
+        child_rows = [
+            row
+            for row in rows
+            if "아동" in f"{row.get('FCLT_KIND_NM', '')} {row.get('FCLT_KIND_DTL_NM', '')}"
+            and district in str(row.get("FCLT_ADDR") or "")
+        ][:limit]
+
+        if child_rows:
+            items = []
+            for i, row in enumerate(child_rows):
+                name = str(row.get("FCLT_NM") or "").strip()
+                address = str(row.get("FCLT_ADDR") or "").strip()
+                coordinate = _geocode(address)
+                if coordinate:
+                    lat, lng = coordinate
+                else:
+                    offset_lat = (i % 5) * 0.0015
+                    offset_lng = ((i // 5) % 5) * 0.0015
+                    lat, lng = default_lat + offset_lat, default_lng + offset_lng
+
+                identity = str(row.get("FCLT_CD") or f"{name}|{address}")
+                homepage_url = next(
+                    (
+                        str(row.get(key)).strip()
+                        for key in ("FCLT_HMPG", "FCLT_HMPG_URL", "FCLT_HOME_URL", "HOMEPAGE")
+                        if row.get(key)
+                    ),
+                    None,
+                )
+                if homepage_url in ("http://", "https://"):
+                    homepage_url = None
+
+                match_412 = next(
+                    (center for center in centers_412 if center.get("district") == district and (center.get("name") in name or name in center.get("name"))),
+                    None,
+                )
+                if not homepage_url:
+                    if match_412 and match_412.get("detail_url"):
+                        homepage_url = match_412["detail_url"]
+                    elif rep and (rep.get("name") in name or name in rep.get("name")):
+                        homepage_url = rep_hp
+                    else:
+                        homepage_url = rep_hp or OFFICIAL_FACILITY_URL
+
+                phone = str(row.get("FCLT_TEL_NO") or "").strip() or None
+                operation_status = str(row.get("FCLT_STATUS_NM") or "").strip() or None
+                items.append(
+                    _build_facility_item(
+                        identity=identity,
+                        name=name,
+                        district=district,
+                        facility_type=str(row.get("FCLT_KIND_NM") or "아동복지시설").strip(),
+                        address=address,
+                        phone=phone,
+                        homepage_url=homepage_url,
+                        operation_status=operation_status,
+                        lat=lat,
+                        lng=lng,
+                        matched_official_center=bool(match_412),
+                    )
+                )
+
+            return schema.FacilityListResponse(
+                items=_rank_trusted_facilities(items),
+                total=len(items),
+                geocoded_count=sum(item.lat is not None and item.lng is not None for item in items),
+                source=source,
+                notice="서울 열린데이터 샘플 5건만 조회합니다." if source == "seoul_sample" else None,
+            )
+    except HTTPException as e:
+        if e.status_code == 400:
+            raise
+    except Exception:
+        pass
+
+    # 2. 25개 자치구 대표 센터 + 412개 서울 아동복지센터 기반 구성
+    items = []
+    seen_names = set()
+
+    if rep:
+        rep_name = rep.get("name", "").strip()
+        rep_addr = rep.get("address", "").strip()
+        rep_tel = rep.get("tel", "").strip() or None
+        rep_detail = rep.get("detail_url", "").strip() or None
+
+        coord = _geocode(rep_addr) if rep_addr else None
+        lat, lng = coord if coord else (default_lat, default_lng)
+
+        rep_item = _build_facility_item(
+            identity=f"{district}|{rep_name}|{rep_addr}",
+            name=rep_name,
+            district=district,
+            facility_type="지역아동센터",
+            address=rep_addr,
+            phone=rep_tel,
+            homepage_url=rep_hp or rep_detail or OFFICIAL_FACILITY_URL,
+            operation_status="운영중",
+            lat=lat,
+            lng=lng,
+            matched_official_center=True,
+        )
+        items.append(rep_item)
+        seen_names.add(rep_name)
+
+    c412_district = [c for c in centers_412 if c.get("district") == district]
+    for i, c in enumerate(c412_district):
+        c_name = c.get("name", "").strip()
+        if c_name in seen_names or any(seen in c_name or c_name in seen for seen in seen_names):
+            continue
+
+        detail_url = c.get("detail_url", "").strip() or None
+        tel = c.get("tel", "").strip() or None
+
+        matched_parsed = next(
+            (p for p in parsed_centers if p.get("name") in c_name or c_name in p.get("name")),
+            None,
+        )
+        address = matched_parsed.get("addr", "").strip() if matched_parsed else ""
+        kind = matched_parsed.get("kind", "지역아동센터").strip() if matched_parsed else "지역아동센터"
+        if not tel and matched_parsed and matched_parsed.get("tel"):
+            tel = matched_parsed["tel"].strip() or None
+
+        coord = _geocode(address) if address else None
+        if coord:
+            lat, lng = coord
+        else:
+            offset_lat = ((i + 1) % 5) * 0.0015
+            offset_lng = (((i + 1) // 5) % 5) * 0.0015
+            lat, lng = default_lat + offset_lat, default_lng + offset_lng
+
+        items.append(
+            _build_facility_item(
+                identity=f"{district}|{c_name}|{address}",
+                name=c_name,
+                district=district,
+                facility_type=kind,
+                address=address,
+                phone=tel,
+                homepage_url=detail_url or rep_hp or OFFICIAL_FACILITY_URL,
+                operation_status="운영중",
+                lat=lat,
+                lng=lng,
+                matched_official_center=True,
+            )
+        )
+        seen_names.add(c_name)
+        if len(items) >= limit:
+            break
+
+    # 3. 만약 추가 시설이 더 필요할 경우 parsed_centers에서 보충
+    if len(items) < limit:
+        for i, p in enumerate(parsed_centers):
+            p_name = p.get("name", "").strip()
+            if p_name in seen_names or any(seen in p_name or p_name in seen for seen in seen_names):
+                continue
+            address = p.get("addr", "").strip()
+            kind = p.get("kind", "지역아동센터").strip()
+            tel = p.get("tel", "").strip() or None
+
+            match_412 = next(
+                (c for c in centers_412 if c.get("district") == district and (c.get("name") in p_name or p_name in c.get("name"))),
+                None,
+            )
+            homepage_url = match_412.get("detail_url") if match_412 else (rep_hp or OFFICIAL_FACILITY_URL)
+
+            coord = _geocode(address) if address else None
+            if coord:
+                lat, lng = coord
+            else:
+                offset_lat = ((len(items) + i) % 5) * 0.0015
+                offset_lng = (((len(items) + i) // 5) % 5) * 0.0015
+                lat, lng = default_lat + offset_lat, default_lng + offset_lng
+
+            items.append(
+                _build_facility_item(
+                    identity=f"{district}|{p_name}|{address}",
+                    name=p_name,
+                    district=district,
+                    facility_type=kind,
+                    address=address,
+                    phone=tel,
+                    homepage_url=homepage_url,
+                    operation_status="운영중",
+                    lat=lat,
+                    lng=lng,
+                    matched_official_center=bool(match_412),
+                )
+            )
+            seen_names.add(p_name)
+            if len(items) >= limit:
+                break
+
+    # 랭킹: 대표 센터는 1순위, 그 다음 최우수 센터가 2순위
+    ranked = sorted(
+        items,
+        key=lambda it: (
+            -(it.total_score or 0),
+            it.name,
+            it.address,
+        ),
+    )
+    if rep:
+        rep_id = next((it.id for it in ranked if it.name == rep.get("name")), None)
+        if rep_id:
+            rep_obj = next(it for it in ranked if it.id == rep_id)
+            ranked.remove(rep_obj)
+            ranked.insert(0, rep_obj)
+
+    selected_ids = {item.id for item in ranked[:2]}
+    for idx, it in enumerate(ranked):
+        it.district_rank = idx + 1
+        it.is_representative = it.id in selected_ids
+        it.is_selected = it.id in selected_ids
+
+    return schema.FacilityListResponse(
+        items=ranked,
+        total=len(ranked),
+        geocoded_count=sum(it.lat is not None and it.lng is not None for it in ranked),
+        source="json_412",
+        notice="서울 25개 자치구 대표 아동복지시설 및 우리동네키움포털 412개 센터 데이터 기준입니다.",
+    )
+
+
+
+
+# --------------------------------------------------------------------------
+# 꿈방울(포인트) 적립 — PRD "5. 핵심 기능 Flow > 꿈가지" 적립 예시 그대로.
+# 기부(차감) 로직은 아직 없음 — 지금은 적립/조회만.
+# --------------------------------------------------------------------------
+
+GENERAL_PAYMENT_POINT_DIVISOR = 100  # 일반결제 1%
+TRADE_POINT_DIVISOR = 1000  # 중고거래 0.1%
+TRADE_POINT_MIN_AMOUNT = 5000  # 중고거래는 5,000원 이상만 적립 대상
+# ponytail: 활동동네를 아직 안 정한 사용자(QR 가맹점 결제 등 위치 정보가 아예 없는 경우
+# 포함)의 적립 기본 소속 — "지역 미확인"으로 관리자 화면에 안 뜨게 하는 fallback.
+FALLBACK_REGION_DONG_CODE = "TMP-YDP-영등포구"
+FALLBACK_REGION_GU_NAME = "영등포구"  # 위 dong_code가 가리키는 Region의 gu_name과 반드시 일치해야 함
+
+
+def _fallback_region_id(db: Session) -> int | None:
+    row = db.query(Region.id).filter(Region.dong_code == FALLBACK_REGION_DONG_CODE).first()
+    return row[0] if row else None
+
+
+def award_points(
+    db: Session, user_id: int, amount: int, source: str, related_id: int | None = None, region_id: int | None = None
+) -> int:
+    """결제 금액에서 꿈방울을 적립하고 적립액을 반환한다(0이면 기록도 안 남김).
+
+    region_id는 적립 "당시" 동네 스냅샷 — 호출부가 넘겨야 한다(트레이드는 상품의
+    region_id, QR 일반결제는 결제 시점 사용자의 region_id). User.region_id를 나중에
+    join으로 끌어오면 사용자가 활동동네를 바꾸는 순간 이미 지난 적립까지 전부 새
+    동네 소속으로 바뀌어버리는 버그가 생긴다 — 여기서 확정해서 저장한다.
+    region_id가 없으면(활동동네 미설정, 가맹점 위치 없음 등) 기본 지역으로 대체 —
+    "지역 미확인"이 관리자 집계에 계속 쌓이는 걸 막는다.
+
+    호출부(wallet/service.py)가 이미 같은 트랜잭션 안에서 커밋하므로 여기선
+    db.add만 하고 커밋은 하지 않는다 — 결제와 적립이 항상 함께 성공/실패한다.
+    """
+    if source == "general_payment":
+        points = amount // GENERAL_PAYMENT_POINT_DIVISOR
+    elif source == "trade":
+        points = amount // TRADE_POINT_DIVISOR if amount >= TRADE_POINT_MIN_AMOUNT else 0
+    else:
+        raise ValueError(f"unknown point source: {source}")
+
+    if points <= 0:
+        return 0
+
+    db.add(
+        PointTransaction(
+            user_id=user_id,
+            amount=points,
+            source=source,
+            related_id=related_id,
+            region_id=region_id or _fallback_region_id(db),
+        )
+    )
+    return points
+
+
+def get_point_balance(db: Session, user: User, page: int, size: int) -> schema.PointBalanceResponse:
+    balance = (
+        db.query(func.coalesce(func.sum(PointTransaction.amount), 0))
+        .filter(PointTransaction.user_id == user.id)
+        .scalar()
+    )
+    query = db.query(PointTransaction).filter(PointTransaction.user_id == user.id)
+    total = query.count()
+    rows = (
+        query.order_by(PointTransaction.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+    items = [schema.PointTransactionItem.model_validate(r) for r in rows]
+    return schema.PointBalanceResponse(balance=balance, transactions=Page(items=items, total=total))
+
+
+def get_district_donation_summary(db: Session, district: str) -> schema.DistrictDonationSummaryResponse:
+    """꿈가지 화면 "기부 참여"/"동네 기부 진행률" — 지금까지는 프론트에 0으로
+    하드코딩돼 있어서 실제 중고거래/현장결제로 꿈방울이 쌓여도 반영이 안 됐다.
+
+    적립 1건 = 기부 1회 참여로 세고(서비스 컨셉상 결제할 때마다 자동으로 꿈가지에
+    동참하는 구조), 누적 꿈방울 합계를 그대로 모금액(원)으로 보여준다 — 실제 환전
+    로직은 없어 1방울=1원으로 취급하는 데모 단순화(ponytail: 나중에 실제 기부 집행
+    전환율이 정해지면 여기만 바꾸면 됨). region_id 스냅샷 기준이라 사용자가 나중에
+    동네를 옮겨도 과거 적립은 그 동네에 그대로 남는다(point_summary와 동일 원칙).
+
+    INNER JOIN이 아니라 LEFT JOIN + COALESCE로 쓴다 — award_points가 region_id를
+    못 채운 행(폴백 지역 row가 배포 환경에 시딩 안 됐거나 등 어떤 이유로든)이 있어도
+    이 집계에서 통째로 조용히 빠지는 대신 award_points와 같은 기본 지역으로 잡히게
+    하는 안전망(admin/point_summary.py와 동일 패턴).
+    """
+    gu_name = func.coalesce(Region.gu_name, FALLBACK_REGION_GU_NAME)
+    row = (
+        db.query(
+            func.count(PointTransaction.id),
+            func.coalesce(func.sum(PointTransaction.amount), 0),
+        )
+        .select_from(PointTransaction)
+        .outerjoin(Region, Region.id == PointTransaction.region_id)
+        .filter(gu_name == district, PointTransaction.amount > 0)
+        .first()
+    )
+    count, total = row
+    return schema.DistrictDonationSummaryResponse(
+        district=district, participation_count=count or 0, total_points=int(total or 0)
+    )
+
